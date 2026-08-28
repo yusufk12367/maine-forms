@@ -43,7 +43,7 @@ export interface Application {
   skills_expertise: string
 
   // References
-  references: string
+  employment_references: string
 
   // Extra
   hobbies: string

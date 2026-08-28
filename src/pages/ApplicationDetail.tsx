@@ -154,9 +154,9 @@ export default function ApplicationDetail() {
           </Section>
         )}
 
-        {app.references && (
+        {app.employment_references && (
           <Section title="Employment References">
-            <pre className="text-white/70 text-sm whitespace-pre-wrap font-sans leading-relaxed">{app.references}</pre>
+            <pre className="text-white/70 text-sm whitespace-pre-wrap font-sans leading-relaxed">{app.employment_references}</pre>
           </Section>
         )}
 

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS applications (
   skills_expertise TEXT,
 
   -- References & Extra
-  references TEXT,
+  employment_references TEXT,
   hobbies TEXT
 );
 

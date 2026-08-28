@@ -28,7 +28,7 @@ const emptyForm: Omit<Application, 'id' | 'created_at' | 'status'> = {
   english_dialog: '', english_reading: '', english_writing: '', other_languages: '',
   position_applied: '', current_position: '', experience_years: '', current_workplace: '',
   previous_workplaces: '', salary_expectation: '', education: '', courses_workshops: '',
-  skills_expertise: '', references: '', hobbies: '',
+  skills_expertise: '', employment_references: '', hobbies: '',
 }
 
 type FileField = 'profile_photo' | 'passport' | 'emirates_id' | 'cv'
@@ -280,8 +280,8 @@ export default function App() {
             <StepWrapper title="Employment References" subtitle="Provide contact details for two professional references.">
               <TextArea
                 label="References"
-                value={form.references}
-                onChange={v => set('references', v)}
+                value={form.employment_references}
+                onChange={v => set('employment_references', v)}
                 placeholder={`Reference 1:\nName:\nPosition:\nVenue:\nEmail:\nPhone:\n\nReference 2:\nName:\nPosition:\nVenue:\nEmail:\nPhone:`}
                 rows={12}
               />
