@@ -11,8 +11,8 @@ const POSITIONS = [
   'Demi Chef',
   'CDP – Pastry',
   'CDP – Pan',
-  'CDP – Turkey / Arabic',
-  'Commis 2 / 3',
+  'CDP',
+  'Commis 3',
   'Junior Sous Chef',
   'Head Chef',
   'Pastry Chef',
@@ -151,11 +151,11 @@ export default function App() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex flex-col items-center justify-between py-12 px-4">
+          <div className="flex-1 flex flex-col items-center justify-between py-10 px-4">
             <div className="text-center max-w-2xl space-y-6">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-light tracking-wide">The MAINE Group Careers</h1>
-                <h2 className="text-xl sm:text-2xl font-light tracking-widest uppercase mt-1">JOB APPLICATION FORM</h2>
+              <div className="flex flex-col items-center gap-4">
+                <img src="/maine-logo.png" alt="The Maine" className="h-16 sm:h-20 object-contain invert" />
+                <h2 className="text-base sm:text-lg font-light tracking-[0.3em] uppercase text-white/70">Group Careers · Job Application Form</h2>
               </div>
               <div className="space-y-4 text-sm sm:text-base text-white/80 leading-relaxed font-light">
                 <p>The heart and soul of our company are our people, and as our company expands, so do the opportunities. Do you have a passion for people? Do you know what it means to serve with soul? Can you handle working in a high octane environment?</p>

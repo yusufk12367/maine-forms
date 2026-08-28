@@ -70,3 +70,14 @@ CREATE POLICY "Allow anon update" ON applications
 
 -- Storage bucket policy (already created via API)
 -- Make sure 'applications' bucket is set to Public in Supabase dashboard
+
+-- ALSO RUN THIS to allow file uploads from the public form:
+CREATE POLICY "Allow public uploads to applications"
+ON storage.objects FOR INSERT
+TO anon, authenticated
+WITH CHECK (bucket_id = 'applications');
+
+CREATE POLICY "Allow public read from applications"
+ON storage.objects FOR SELECT
+TO anon, authenticated
+USING (bucket_id = 'applications');
