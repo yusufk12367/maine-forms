@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { ArrowLeft, ExternalLink, User } from 'lucide-react'
+import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut } from 'lucide-react'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
@@ -11,11 +13,23 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
 }
 
+// Detect if URL is a PDF by extension or content-type hint
+const isPdf = (url?: string) => {
+  if (!url) return false
+  const lower = url.split('?')[0].toLowerCase()
+  return lower.endsWith('.pdf')
+}
+
 export default function ApplicationDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [app, setApp] = useState<Application | null>(null)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLabel, setPreviewLabel] = useState('')
+  const [imgZoom, setImgZoom] = useState(1)
+  const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!sessionStorage.getItem('maine_admin')) { navigate('/admin'); return }
@@ -26,7 +40,6 @@ export default function ApplicationDetail() {
     const { data } = await supabase.from('applications').select('*').eq('id', id).single()
     setApp(data)
     setLoading(false)
-    // Mark as reviewed
     if (data?.status === 'new') {
       await supabase.from('applications').update({ status: 'reviewed' }).eq('id', id)
     }
@@ -35,6 +48,52 @@ export default function ApplicationDetail() {
   const updateStatus = async (status: string) => {
     await supabase.from('applications').update({ status }).eq('id', id)
     setApp(a => a ? { ...a, status: status as Application['status'] } : a)
+  }
+
+  const openPreview = (url: string, label: string) => {
+    setPreviewUrl(url)
+    setPreviewLabel(label)
+    setImgZoom(1)
+  }
+
+  const closePreview = () => {
+    setPreviewUrl(null)
+    setPreviewLabel('')
+  }
+
+  const handleExportPDF = async () => {
+    if (!printRef.current || !app) return
+    setExporting(true)
+    try {
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#2e2e2e',
+        logging: false,
+      })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const imgWidth = pageWidth
+      const imgHeight = (canvas.height * pageWidth) / canvas.width
+      let yOffset = 0
+      let remainingHeight = imgHeight
+
+      while (remainingHeight > 0) {
+        if (yOffset > 0) pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, -yOffset, imgWidth, imgHeight)
+        yOffset += pageHeight
+        remainingHeight -= pageHeight
+      }
+
+      const filename = `${app.first_name}_${app.last_name}_Application.pdf`
+        .replace(/\s+/g, '_')
+      pdf.save(filename)
+    } catch (err) {
+      console.error('PDF export failed:', err)
+    }
+    setExporting(false)
   }
 
   if (loading) return <div className="min-h-screen bg-[#3a3a3a] flex items-center justify-center text-white/30">Loading...</div>
@@ -56,14 +115,38 @@ export default function ApplicationDetail() {
     ) : null
   )
 
-  const DocLink = ({ label, url }: { label: string; url?: string }) => (
-    url ? (
-      <a href={url} target="_blank" rel="noopener noreferrer"
-        className="flex items-center gap-2 text-maine-gold text-sm hover:text-maine-gold/70 transition-colors">
-        <ExternalLink className="w-4 h-4" /> {label}
-      </a>
-    ) : <span className="text-white/20 text-sm">{label} — not uploaded</span>
-  )
+  const DocItem = ({ label, url }: { label: string; url?: string }) => {
+    if (!url) {
+      return <span className="text-white/20 text-sm flex items-center gap-2"><FileText className="w-4 h-4" /> {label} — not uploaded</span>
+    }
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-white/60 text-sm flex-1 flex items-center gap-2">
+          <FileText className="w-4 h-4 text-white/30 flex-shrink-0" />
+          {label}
+        </span>
+        <div className="flex items-center gap-2">
+          {/* Preview button */}
+          <button
+            onClick={() => openPreview(url, label)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/60 border border-white/15 rounded-lg hover:border-white/40 hover:text-white transition-all"
+          >
+            <Eye className="w-3.5 h-3.5" /> Preview
+          </button>
+          {/* Download button */}
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
+          >
+            <Download className="w-3.5 h-3.5" /> Download
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#3a3a3a]">
@@ -75,6 +158,17 @@ export default function ApplicationDetail() {
           <p className="text-maine-gold text-xs tracking-[0.3em] uppercase">Application</p>
           <h1 className="text-white font-display text-xl">{app.first_name} {app.last_name}</h1>
         </div>
+
+        {/* Export PDF Button */}
+        <button
+          onClick={handleExportPDF}
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2 border border-maine-gold/40 text-maine-gold text-sm rounded-lg hover:bg-maine-gold/10 transition-all disabled:opacity-40"
+        >
+          <Download className="w-4 h-4" />
+          {exporting ? 'Exporting...' : 'Export PDF'}
+        </button>
+
         <select
           value={app.status || 'new'}
           onChange={e => updateStatus(e.target.value)}
@@ -87,8 +181,9 @@ export default function ApplicationDetail() {
         </select>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-4">
-        {/* Profile */}
+      {/* Printable content area */}
+      <div ref={printRef} className="max-w-4xl mx-auto px-4 py-8 space-y-4">
+        {/* Profile Header */}
         <div className="flex items-center gap-6 bg-[#2e2e2e] border border-white/5 rounded-lg p-6">
           {app.profile_photo_url ? (
             <img src={app.profile_photo_url} alt="" className="w-20 h-20 rounded-full object-cover border border-white/10" />
@@ -166,16 +261,106 @@ export default function ApplicationDetail() {
           </Section>
         )}
 
+        {/* Documents section — preview/download buttons won't appear in PDF since they're interactive */}
         <Section title="Documents">
           <div className="space-y-3">
-            <DocLink label="Profile Photo" url={app.profile_photo_url} />
-            <DocLink label="Passport Copy" url={app.passport_url} />
-            <DocLink label="Emirates ID" url={app.emirates_id_url} />
-            <DocLink label="CV / Resume" url={app.cv_url} />
+            <DocItem label="Profile Photo" url={app.profile_photo_url} />
+            <DocItem label="Passport Copy" url={app.passport_url} />
+            <DocItem label="Emirates ID" url={app.emirates_id_url} />
+            <DocItem label="CV / Resume" url={app.cv_url} />
           </div>
         </Section>
-
       </div>
+
+      {/* ─── Document Preview Modal ─────────────────────────────── */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex flex-col"
+          onClick={closePreview}
+        >
+          {/* Modal Header */}
+          <div
+            className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#2e2e2e] flex-shrink-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <Eye className="w-4 h-4 text-maine-gold" />
+              <span className="text-white font-medium">{previewLabel}</span>
+              <span className="text-white/30 text-xs">{isPdf(previewUrl) ? 'PDF' : 'Image'}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Zoom controls for images */}
+              {!isPdf(previewUrl) && (
+                <div className="flex items-center gap-2 border border-white/15 rounded-lg overflow-hidden">
+                  <button
+                    onClick={e => { e.stopPropagation(); setImgZoom(z => Math.max(0.5, z - 0.25)) }}
+                    className="px-3 py-1.5 text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="text-white/40 text-xs px-2">{Math.round(imgZoom * 100)}%</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); setImgZoom(z => Math.min(3, z + 0.25)) }}
+                    className="px-3 py-1.5 text-white/60 hover:bg-white/10 hover:text-white transition-all"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <a
+                href={previewUrl}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
+              >
+                <Download className="w-3.5 h-3.5" /> Download
+              </a>
+              <button
+                onClick={closePreview}
+                className="p-1.5 text-white/40 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Preview Content */}
+          <div
+            className="flex-1 overflow-auto flex items-start justify-center p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            {isPdf(previewUrl) ? (
+              // PDF preview via iframe
+              <iframe
+                src={previewUrl}
+                className="w-full max-w-4xl rounded-lg border border-white/10 shadow-2xl"
+                style={{ height: 'calc(100vh - 130px)', minHeight: '500px' }}
+                title={previewLabel}
+              />
+            ) : (
+              // Image preview with zoom
+              <div className="overflow-auto max-w-full">
+                <img
+                  src={previewUrl}
+                  alt={previewLabel}
+                  className="rounded-lg shadow-2xl border border-white/10 transition-transform duration-200"
+                  style={{
+                    transform: `scale(${imgZoom})`,
+                    transformOrigin: 'top center',
+                    maxWidth: imgZoom <= 1 ? '100%' : 'none',
+                    display: 'block',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Click outside hint */}
+          <p className="text-center text-white/20 text-xs py-2 flex-shrink-0">Click outside to close</p>
+        </div>
+      )}
     </div>
   )
 }

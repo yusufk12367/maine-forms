@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { LogOut, RefreshCw, User, ChevronRight, Search } from 'lucide-react'
+import { LogOut, RefreshCw, User, ChevronRight, Search, Trash2, X } from 'lucide-react'
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
@@ -17,6 +17,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [deleteTarget, setDeleteTarget] = useState<Application | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!sessionStorage.getItem('maine_admin')) {
@@ -40,6 +42,25 @@ export default function AdminDashboard() {
     e.stopPropagation()
     await supabase.from('applications').update({ status }).eq('id', id)
     setApplications(prev => prev.map(a => a.id === id ? { ...a, status: status as Application['status'] } : a))
+  }
+
+  const confirmDelete = (app: Application, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDeleteTarget(app)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return
+    setDeleting(true)
+    try {
+      // Delete the DB row
+      await supabase.from('applications').delete().eq('id', deleteTarget.id)
+      setApplications(prev => prev.filter(a => a.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch (err) {
+      console.error(err)
+    }
+    setDeleting(false)
   }
 
   const filtered = applications.filter(a => {
@@ -158,12 +179,63 @@ export default function AdminDashboard() {
                   <option value="rejected">Rejected</option>
                 </select>
 
+                {/* Delete Button */}
+                <button
+                  onClick={e => confirmDelete(app, e)}
+                  className="p-1.5 text-white/20 hover:text-red-400 hover:bg-red-400/10 rounded transition-all flex-shrink-0"
+                  title="Delete application"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
                 <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-white/50 flex-shrink-0 transition-colors" />
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-[#2e2e2e] border border-white/10 rounded-xl p-6 max-w-sm w-full space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-white font-medium text-lg">Delete Application</h2>
+                <p className="text-white/40 text-sm mt-1">This action cannot be undone.</p>
+              </div>
+              <button onClick={() => setDeleteTarget(null)} className="text-white/30 hover:text-white transition-colors p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-[#3a3a3a] rounded-lg px-4 py-3 border border-white/5">
+              <p className="text-white text-sm font-medium">{deleteTarget.first_name} {deleteTarget.last_name}</p>
+              <p className="text-white/40 text-xs mt-0.5">{deleteTarget.position_applied} · {deleteTarget.email}</p>
+            </div>
+
+            <p className="text-white/50 text-sm">
+              Are you sure you want to permanently delete this application and all associated documents?
+            </p>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 border border-white/15 text-white/60 py-2.5 text-sm rounded-lg hover:border-white/30 hover:text-white transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-500/20 border border-red-500/40 text-red-300 py-2.5 text-sm rounded-lg hover:bg-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deleting ? 'Deleting...' : (<><Trash2 className="w-4 h-4" /> Delete</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
