@@ -37,11 +37,11 @@ export default function ApplicationDetail() {
     setApp(a => a ? { ...a, status: status as Application['status'] } : a)
   }
 
-  if (loading) return <div className="min-h-screen bg-maine-black flex items-center justify-center text-white/30">Loading...</div>
-  if (!app) return <div className="min-h-screen bg-maine-black flex items-center justify-center text-white/30">Not found.</div>
+  if (loading) return <div className="min-h-screen bg-[#3a3a3a] flex items-center justify-center text-white/30">Loading...</div>
+  if (!app) return <div className="min-h-screen bg-[#3a3a3a] flex items-center justify-center text-white/30">Not found.</div>
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="bg-maine-dark border border-white/5 rounded-lg p-6 space-y-4">
+    <div className="bg-[#2e2e2e] border border-white/5 rounded-lg p-6 space-y-4">
       <h3 className="text-maine-gold text-xs tracking-[0.2em] uppercase">{title}</h3>
       {children}
     </div>
@@ -66,7 +66,7 @@ export default function ApplicationDetail() {
   )
 
   return (
-    <div className="min-h-screen bg-maine-black">
+    <div className="min-h-screen bg-[#3a3a3a]">
       <header className="border-b border-white/10 px-6 py-4 flex items-center gap-4">
         <button onClick={() => navigate('/admin/dashboard')} className="text-white/40 hover:text-white transition-colors">
           <ArrowLeft className="w-5 h-5" />
@@ -89,11 +89,11 @@ export default function ApplicationDetail() {
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-4">
         {/* Profile */}
-        <div className="flex items-center gap-6 bg-maine-dark border border-white/5 rounded-lg p-6">
+        <div className="flex items-center gap-6 bg-[#2e2e2e] border border-white/5 rounded-lg p-6">
           {app.profile_photo_url ? (
             <img src={app.profile_photo_url} alt="" className="w-20 h-20 rounded-full object-cover border border-white/10" />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-maine-gray border border-white/10 flex items-center justify-center">
+            <div className="w-20 h-20 rounded-full bg-[#333333] border border-white/10 flex items-center justify-center">
               <User className="w-8 h-8 text-white/20" />
             </div>
           )}

@@ -59,7 +59,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-maine-black">
+    <div className="min-h-screen bg-[#3a3a3a]">
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by name, email, position..."
-            className="w-full bg-maine-dark border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder-white/20 focus:border-maine-gold transition-colors text-sm"
+            className="w-full bg-[#2e2e2e] border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder-white/20 focus:border-maine-gold transition-colors text-sm"
           />
         </div>
 
@@ -117,13 +117,13 @@ export default function AdminDashboard() {
               <div
                 key={app.id}
                 onClick={() => navigate(`/admin/application/${app.id}`)}
-                className="flex items-center gap-4 bg-maine-dark border border-white/5 rounded-lg px-5 py-4 cursor-pointer hover:border-white/20 transition-all group"
+                className="flex items-center gap-4 bg-[#2e2e2e] border border-white/5 rounded-lg px-5 py-4 cursor-pointer hover:border-white/20 transition-all group"
               >
                 {/* Avatar */}
                 {app.profile_photo_url ? (
                   <img src={app.profile_photo_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-white/10" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-maine-gray border border-white/10 flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#333333] border border-white/10 flex items-center justify-center flex-shrink-0">
                     <User className="w-5 h-5 text-white/30" />
                   </div>
                 )}
