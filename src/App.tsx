@@ -20,14 +20,6 @@ const POSITIONS = [
 
 const ENGLISH_LEVELS = ['Fluent', 'Very Good', 'Good', 'Need Improvement', 'Mediocre']
 
-const VENUE_IMAGES = [
-  { src: 'https://themainegroup.com/wp-content/uploads/2023/01/The-Maine-Land-Brasserie-Dubai-1.jpg', label: 'THE MAINE\nLand Brasserie', sub: 'BUSINESS BAY · DUBAI' },
-  { src: 'https://themainegroup.com/wp-content/uploads/2022/12/The-Maine-Oyster-Bar-Grill-Dubai.jpg', label: 'THE MAINE\nOyster Bar & Grill', sub: 'JBR · DUBAI' },
-  { src: 'https://themainegroup.com/wp-content/uploads/2023/01/The-Maine-Street-Eatery-Dubai.jpg', label: 'THE MAINE\nStreet Eatery', sub: 'STUDIO CITY · DUBAI' },
-  { src: 'https://themainegroup.com/wp-content/uploads/2022/12/The-Maine-Mayfair-London.jpg', label: 'THE MAINE\nMayfair', sub: 'MAYFAIR · LONDON' },
-  { src: 'https://themainegroup.com/wp-content/uploads/2022/12/The-Maine-Ibiza.jpg', label: 'THE MAINE\nIbiza', sub: 'SALINAS · IBIZA' },
-]
-
 type FileField = 'profile_photo' | 'passport' | 'emirates_id' | 'cv'
 
 const emptyForm: Omit<Application, 'id' | 'created_at' | 'status'> = {
@@ -153,27 +145,9 @@ export default function App() {
       {/* Step 0 — Landing */}
       {step === 0 && (
         <div className="min-h-screen flex flex-col">
-          {/* Photo Grid */}
+          {/* Photo Banner */}
           <div className="w-full">
-            <div className="flex h-48 sm:h-64 md:h-72 overflow-hidden">
-              {VENUE_IMAGES.map((img, i) => (
-                <div key={i} className="relative flex-1 overflow-hidden">
-                  <img
-                    src={img.src}
-                    alt={img.label}
-                    className="w-full h-full object-cover"
-                    onError={e => { (e.target as HTMLImageElement).style.background = '#2a2a2a' }}
-                  />
-                  <div className="absolute inset-0 bg-black/30" />
-                  <div className="absolute bottom-3 left-0 right-0 text-center px-1">
-                    {img.label.split('\n').map((line, li) => (
-                      <p key={li} className={`text-white ${li === 0 ? 'text-[8px] sm:text-[10px] tracking-widest font-light' : 'text-[7px] sm:text-[9px] tracking-wider italic'}`}>{line}</p>
-                    ))}
-                    <p className="text-white/60 text-[6px] sm:text-[8px] tracking-widest mt-0.5">{img.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <img src="/maine-venues.jpg" alt="The Maine Group Venues" className="w-full object-cover object-center" style={{ maxHeight: '220px' }} />
           </div>
 
           {/* Content */}
