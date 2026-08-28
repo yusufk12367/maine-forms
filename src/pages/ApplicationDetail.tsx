@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut, CheckSquare, Square, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut, CheckSquare, Square } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 
@@ -13,25 +13,35 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
 }
 
-// Detect file type from URL extension
 function getFileType(url?: string): 'image' | 'pdf' | 'word' | 'unknown' {
   if (!url) return 'unknown'
   const ext = url.split('?')[0].toLowerCase().split('.').pop() ?? ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'image'
   if (ext === 'pdf') return 'pdf'
   if (['doc', 'docx'].includes(ext)) return 'word'
   return 'unknown'
 }
 
-// Fetch a remote image and convert to base64 data URL
-async function urlToDataUrl(url: string): Promise<string> {
-  const res = await fetch(url)
-  const blob = await res.blob()
+function getExt(url: string) {
+  return url.split('?')[0].split('.').pop()?.toUpperCase() ?? '?'
+}
+
+// Render a remote image into a canvas element and return a data URL
+// Works around CORS by drawing via an Image element (Supabase public URLs allow img src)
+async function imageUrlToDataUrl(url: string): Promise<{ dataUrl: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.92), w: img.naturalWidth, h: img.naturalHeight })
+    }
+    img.onerror = () => reject(new Error(`Failed to load ${url}`))
+    img.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now()
   })
 }
 
@@ -41,6 +51,7 @@ export default function ApplicationDetail() {
   const [app, setApp] = useState<Application | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState('')
   const [showExportModal, setShowExportModal] = useState(false)
   const [includeDocs, setIncludeDocs] = useState(true)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -82,100 +93,93 @@ export default function ApplicationDetail() {
     if (!printRef.current || !app) return
     setExporting(true)
     setShowExportModal(false)
+    setExportProgress('Capturing profile...')
 
     try {
-      // 1. Capture the profile page
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#2e2e2e',
-        logging: false,
-      })
-
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
 
-      // Add profile pages (may span multiple A4 pages)
-      const profileImgData = canvas.toDataURL('image/png')
+      // ── Step 1: capture the profile page ──────────────────────
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#2e2e2e',
+        logging: false,
+      })
+
       const profileImgH = (canvas.height * pageW) / canvas.width
+      const profileData = canvas.toDataURL('image/jpeg', 0.92)
       let yOffset = 0
       let remaining = profileImgH
 
       while (remaining > 0) {
         if (yOffset > 0) pdf.addPage()
-        pdf.addImage(profileImgData, 'PNG', 0, -yOffset, pageW, profileImgH)
+        pdf.addImage(profileData, 'JPEG', 0, -yOffset, pageW, profileImgH)
         yOffset += pageH
         remaining -= pageH
       }
 
-      // 2. If includeDocs, append each image document as its own page
+      // ── Step 2: append image documents as pages ────────────────
       if (includeDocs) {
-        const docs: { label: string; url: string }[] = [
+        const docs = [
           { label: 'Profile Photo', url: app.profile_photo_url ?? '' },
           { label: 'Passport Copy', url: app.passport_url ?? '' },
           { label: 'Emirates ID', url: app.emirates_id_url ?? '' },
           { label: 'CV / Resume', url: app.cv_url ?? '' },
-        ].filter(d => d.url && getFileType(d.url) === 'image')
+        ].filter(d => d.url)
 
         for (const doc of docs) {
-          try {
-            const dataUrl = await urlToDataUrl(doc.url)
+          const type = getFileType(doc.url)
+          setExportProgress(`Adding ${doc.label}...`)
 
-            // Create a temp Image to get natural dimensions
-            const imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
-              const img = new Image()
-              img.crossOrigin = 'anonymous'
-              img.onload = () => resolve(img)
-              img.onerror = reject
-              img.src = dataUrl
-            })
+          if (type === 'image') {
+            try {
+              const { dataUrl, w, h } = await imageUrlToDataUrl(doc.url)
+              pdf.addPage()
 
+              // Section label
+              pdf.setFontSize(10)
+              pdf.setTextColor(180, 150, 80)
+              pdf.text(doc.label, 10, 10)
+
+              // Fit image in page (margin: 10mm sides, 15mm top, 10mm bottom)
+              const maxW = pageW - 20
+              const maxH = pageH - 25
+              const ratio = Math.min(maxW / w, maxH / h)
+              const iw = w * ratio
+              const ih = h * ratio
+              pdf.addImage(dataUrl, 'JPEG', (pageW - iw) / 2, 15, iw, ih)
+            } catch {
+              // image failed to load — add a note page
+              pdf.addPage()
+              pdf.setFontSize(10)
+              pdf.setTextColor(180, 150, 80)
+              pdf.text(doc.label, 10, 10)
+              pdf.setTextColor(150, 150, 150)
+              pdf.setFontSize(9)
+              pdf.text('Could not embed this image (CORS restriction). Download it separately.', 10, 25)
+              pdf.setTextColor(100, 100, 200)
+              pdf.text(doc.url, 10, 35)
+            }
+          } else if (type === 'pdf' || type === 'word') {
+            // Can't embed PDF/Word pages — add a reference page
             pdf.addPage()
-
-            // Label at top
             pdf.setFontSize(10)
-            pdf.setTextColor(180, 150, 80) // gold-ish
-            pdf.text(doc.label, 10, 10)
-
-            // Fit image within page (leaving 15mm top for label, 10mm margins)
-            const maxW = pageW - 20
-            const maxH = pageH - 25
-            const ratio = Math.min(maxW / imgEl.naturalWidth, maxH / imgEl.naturalHeight)
-            const imgW = imgEl.naturalWidth * ratio
-            const imgH = imgEl.naturalHeight * ratio
-            const x = (pageW - imgW) / 2
-            const y = 15
-
-            pdf.addImage(dataUrl, 'JPEG', x, y, imgW, imgH)
-          } catch {
-            // If fetching this doc fails, just skip it
+            pdf.setTextColor(180, 150, 80)
+            pdf.text(doc.label + ` (${getExt(doc.url)} — download separately)`, 10, 10)
+            pdf.setTextColor(150, 150, 150)
+            pdf.setFontSize(9)
+            pdf.text('This document format cannot be embedded in a PDF.', 10, 22)
+            pdf.text('Download link:', 10, 32)
+            pdf.setTextColor(100, 150, 220)
+            pdf.textWithLink(doc.url, 10, 42, { url: doc.url })
           }
-        }
-
-        // Note any non-image docs (PDFs, Word) that couldn't be embedded
-        const nonImageDocs = [
-          { label: 'Profile Photo', url: app.profile_photo_url ?? '' },
-          { label: 'Passport Copy', url: app.passport_url ?? '' },
-          { label: 'Emirates ID', url: app.emirates_id_url ?? '' },
-          { label: 'CV / Resume', url: app.cv_url ?? '' },
-        ].filter(d => d.url && getFileType(d.url) !== 'image' && getFileType(d.url) !== 'unknown')
-
-        if (nonImageDocs.length > 0) {
-          pdf.addPage()
-          pdf.setFontSize(12)
-          pdf.setTextColor(180, 150, 80)
-          pdf.text('Additional Documents (download separately)', 10, 20)
-          pdf.setFontSize(9)
-          pdf.setTextColor(180, 180, 180)
-          pdf.text('The following documents are in PDF or Word format and cannot be embedded:', 10, 30)
-          nonImageDocs.forEach((d, i) => {
-            pdf.setTextColor(220, 220, 220)
-            pdf.text(`• ${d.label}: ${d.url}`, 10, 42 + i * 10)
-          })
         }
       }
 
+      setExportProgress('Saving...')
       const filename = `${app.first_name}_${app.last_name}_Application${includeDocs ? '_with_docs' : ''}.pdf`
         .replace(/\s+/g, '_')
       pdf.save(filename)
@@ -184,6 +188,7 @@ export default function ApplicationDetail() {
     }
 
     setExporting(false)
+    setExportProgress('')
   }
 
   if (loading) return <div className="min-h-screen bg-[#3a3a3a] flex items-center justify-center text-white/30">Loading...</div>
@@ -206,49 +211,47 @@ export default function ApplicationDetail() {
   )
 
   const DocItem = ({ label, url }: { label: string; url?: string }) => {
-    if (!url) {
-      return <div className="flex items-center gap-2 text-white/20 text-sm"><FileText className="w-4 h-4 flex-shrink-0" /> {label} — not uploaded</div>
-    }
-
+    if (!url) return (
+      <div className="flex items-center gap-2 text-white/20 text-sm">
+        <FileText className="w-4 h-4 flex-shrink-0" /> {label} — not uploaded
+      </div>
+    )
     const type = getFileType(url)
-
     return (
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <FileText className="w-4 h-4 text-white/30 flex-shrink-0" />
-          <span className="text-white/60 text-sm truncate">{label}</span>
-          <span className="text-white/20 text-xs uppercase tracking-wide flex-shrink-0">
-            {url.split('?')[0].split('.').pop()}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => openPreview(url, label)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/60 border border-white/15 rounded-lg hover:border-white/40 hover:text-white transition-all"
-          >
-            <Eye className="w-3.5 h-3.5" /> Preview
-          </button>
-          <a
-            href={url}
-            download
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
-          >
-            <Download className="w-3.5 h-3.5" /> Download
-          </a>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <FileText className="w-4 h-4 text-white/30 flex-shrink-0" />
+            <span className="text-white/60 text-sm truncate">{label}</span>
+            <span className="text-white/25 text-xs uppercase tracking-wide flex-shrink-0">{getExt(url)}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => openPreview(url, label)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/60 border border-white/15 rounded-lg hover:border-white/40 hover:text-white transition-all"
+            >
+              <Eye className="w-3.5 h-3.5" /> Preview
+            </button>
+            <a
+              href={url} download target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
+            >
+              <Download className="w-3.5 h-3.5" /> Download
+            </a>
+          </div>
         </div>
         {type === 'word' && (
-          <p className="w-full text-xs text-amber-400/70 flex items-center gap-1.5 pl-6">
-            <AlertCircle className="w-3 h-3 flex-shrink-0" /> Word documents can't be previewed — use Download to open
-          </p>
+          <p className="text-xs text-amber-400/60 pl-6">Word — opens in Google Docs viewer for preview</p>
         )}
       </div>
     )
   }
 
-  // Determine what to show inside the preview modal
   const previewFileType = previewUrl ? getFileType(previewUrl) : 'unknown'
+  // Google Docs viewer URL for Word/PDF fallback
+  const googleViewerUrl = previewUrl
+    ? `https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`
+    : ''
 
   return (
     <div className="min-h-screen bg-[#3a3a3a]">
@@ -260,17 +263,14 @@ export default function ApplicationDetail() {
           <p className="text-maine-gold text-xs tracking-[0.3em] uppercase">Application</p>
           <h1 className="text-white font-display text-xl">{app.first_name} {app.last_name}</h1>
         </div>
-
-        {/* Export PDF Button → opens modal */}
         <button
           onClick={() => setShowExportModal(true)}
           disabled={exporting}
           className="flex items-center gap-2 px-4 py-2 border border-maine-gold/40 text-maine-gold text-sm rounded-lg hover:bg-maine-gold/10 transition-all disabled:opacity-40"
         >
           <Download className="w-4 h-4" />
-          {exporting ? 'Exporting...' : 'Export PDF'}
+          {exporting ? exportProgress || 'Exporting...' : 'Export PDF'}
         </button>
-
         <select
           value={app.status || 'new'}
           onChange={e => updateStatus(e.target.value)}
@@ -283,13 +283,12 @@ export default function ApplicationDetail() {
         </select>
       </header>
 
-      {/* ─── Printable profile content ─────────────────────────── */}
+      {/* ─── Profile content (captured for PDF) ─────────────────── */}
       <div ref={printRef} className="max-w-4xl mx-auto px-4 py-8 space-y-4">
-
-        {/* Profile Header */}
         <div className="flex items-center gap-6 bg-[#2e2e2e] border border-white/5 rounded-lg p-6">
           {app.profile_photo_url ? (
-            <img src={app.profile_photo_url} alt="" className="w-20 h-20 rounded-full object-cover border border-white/10" crossOrigin="anonymous" />
+            <img src={app.profile_photo_url} alt="" crossOrigin="anonymous"
+              className="w-20 h-20 rounded-full object-cover border border-white/10" />
           ) : (
             <div className="w-20 h-20 rounded-full bg-[#333333] border border-white/10 flex items-center justify-center">
               <User className="w-8 h-8 text-white/20" />
@@ -299,7 +298,9 @@ export default function ApplicationDetail() {
             <h2 className="text-white text-2xl font-display">{app.first_name} {app.last_name}</h2>
             <p className="text-maine-gold">{app.position_applied}</p>
             <p className="text-white/40 text-sm mt-1">{app.email} · {app.phone}</p>
-            <p className="text-white/30 text-xs mt-1">Applied {app.created_at ? new Date(app.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}</p>
+            <p className="text-white/30 text-xs mt-1">Applied {app.created_at
+              ? new Date(app.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+              : '—'}</p>
           </div>
         </div>
 
@@ -310,14 +311,12 @@ export default function ApplicationDetail() {
             <Row label="Address" value={app.current_address} />
             <Row label="Instagram" value={app.instagram} />
           </Section>
-
           <Section title="UAE Status">
             <Row label="Driving License" value={app.uae_driving_license} />
             <Row label="Accommodation" value={app.requires_accommodation} />
             <Row label="UAE Eligibility" value={app.uae_eligibility} />
             <Row label="Joining" value={app.joining_availability} />
           </Section>
-
           <Section title="Professional">
             <Row label="Current Position" value={app.current_position} />
             <Row label="Experience" value={app.experience_years ? `${app.experience_years} years` : undefined} />
@@ -325,7 +324,6 @@ export default function ApplicationDetail() {
             <Row label="Salary Expectation" value={app.salary_expectation ? `AED ${app.salary_expectation}/month` : undefined} />
             <Row label="Education" value={app.education} />
           </Section>
-
           <Section title="Languages">
             <Row label="English (Dialog)" value={app.english_dialog} />
             <Row label="English (Reading)" value={app.english_reading} />
@@ -339,25 +337,21 @@ export default function ApplicationDetail() {
             <pre className="text-white/70 text-sm whitespace-pre-wrap font-sans leading-relaxed">{app.previous_workplaces}</pre>
           </Section>
         )}
-
         {app.skills_expertise && (
           <Section title="Skills & Expertise">
             <p className="text-white/70 text-sm leading-relaxed">{app.skills_expertise}</p>
           </Section>
         )}
-
         {app.courses_workshops && (
           <Section title="Courses & Workshops">
             <p className="text-white/70 text-sm leading-relaxed">{app.courses_workshops}</p>
           </Section>
         )}
-
         {app.employment_references && (
           <Section title="Employment References">
             <pre className="text-white/70 text-sm whitespace-pre-wrap font-sans leading-relaxed">{app.employment_references}</pre>
           </Section>
         )}
-
         {app.hobbies && (
           <Section title="Hobbies & Interests">
             <p className="text-white/70 text-sm leading-relaxed">{app.hobbies}</p>
@@ -376,44 +370,43 @@ export default function ApplicationDetail() {
 
       {/* ─── Export Modal ───────────────────────────────────────── */}
       {showExportModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => setShowExportModal(false)}>
-          <div className="bg-[#2e2e2e] border border-white/10 rounded-xl p-6 max-w-sm w-full space-y-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+          onClick={() => setShowExportModal(false)}>
+          <div className="bg-[#2e2e2e] border border-white/10 rounded-xl p-6 max-w-sm w-full space-y-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-white font-medium text-lg">Export Profile as PDF</h2>
                 <p className="text-white/40 text-sm mt-1">{app.first_name} {app.last_name}</p>
               </div>
-              <button onClick={() => setShowExportModal(false)} className="text-white/30 hover:text-white transition-colors p-1">
+              <button onClick={() => setShowExportModal(false)} className="text-white/30 hover:text-white p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Checkbox option */}
             <button
               onClick={() => setIncludeDocs(v => !v)}
               className="w-full flex items-start gap-3 p-4 rounded-lg border border-white/10 hover:border-white/25 transition-all text-left"
             >
               {includeDocs
                 ? <CheckSquare className="w-5 h-5 text-maine-gold flex-shrink-0 mt-0.5" />
-                : <Square className="w-5 h-5 text-white/30 flex-shrink-0 mt-0.5" />
-              }
+                : <Square className="w-5 h-5 text-white/30 flex-shrink-0 mt-0.5" />}
               <div>
                 <p className="text-white text-sm font-medium">Include documents</p>
-                <p className="text-white/40 text-xs mt-0.5">Appends passport, photo, Emirates ID and CV (images only — Word/PDF docs are download-only) as extra pages</p>
+                <p className="text-white/40 text-xs mt-0.5 leading-relaxed">
+                  Images (photo, passport, EID, CV) are appended as pages.<br />
+                  Word/PDF docs get a reference page with a download link.
+                </p>
               </div>
             </button>
 
-            <div className="flex gap-3 pt-1">
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="flex-1 border border-white/15 text-white/60 py-2.5 text-sm rounded-lg hover:border-white/30 hover:text-white transition-all"
-              >
+            <div className="flex gap-3">
+              <button onClick={() => setShowExportModal(false)}
+                className="flex-1 border border-white/15 text-white/60 py-2.5 text-sm rounded-lg hover:border-white/30 hover:text-white transition-all">
                 Cancel
               </button>
-              <button
-                onClick={handleExportPDF}
-                className="flex-1 bg-maine-gold/20 border border-maine-gold/40 text-maine-gold py-2.5 text-sm rounded-lg hover:bg-maine-gold/30 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={handleExportPDF}
+                className="flex-1 bg-maine-gold/20 border border-maine-gold/40 text-maine-gold py-2.5 text-sm rounded-lg hover:bg-maine-gold/30 transition-all flex items-center justify-center gap-2">
                 <Download className="w-4 h-4" /> Download PDF
               </button>
             </div>
@@ -424,21 +417,18 @@ export default function ApplicationDetail() {
       {/* ─── Document Preview Modal ─────────────────────────────── */}
       {previewUrl && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex flex-col" onClick={closePreview}>
-
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#2e2e2e] flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#2e2e2e] flex-shrink-0"
+            onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <Eye className="w-4 h-4 text-maine-gold" />
               <span className="text-white font-medium">{previewLabel}</span>
-              <span className="text-white/30 text-xs uppercase tracking-wide">
-                {previewUrl.split('?')[0].split('.').pop()}
-              </span>
+              <span className="text-white/30 text-xs uppercase tracking-wide">{getExt(previewUrl)}</span>
             </div>
             <div className="flex items-center gap-3">
-              {/* Zoom — only for images */}
               {previewFileType === 'image' && (
                 <div className="flex items-center gap-1 border border-white/15 rounded-lg overflow-hidden">
-                  <button onClick={e => { e.stopPropagation(); setImgZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2))) }}
+                  <button onClick={e => { e.stopPropagation(); setImgZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2))) }}
                     className="px-3 py-1.5 text-white/60 hover:bg-white/10 hover:text-white transition-all">
                     <ZoomOut className="w-4 h-4" />
                   </button>
@@ -454,21 +444,22 @@ export default function ApplicationDetail() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all">
                 <Download className="w-3.5 h-3.5" /> Download
               </a>
-              <button onClick={closePreview} className="p-1.5 text-white/40 hover:text-white transition-colors rounded-lg hover:bg-white/10">
+              <button onClick={closePreview}
+                className="p-1.5 text-white/40 hover:text-white transition-colors rounded-lg hover:bg-white/10">
                 <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto flex items-start justify-center p-6" onClick={e => e.stopPropagation()}>
+          <div className="flex-1 overflow-auto flex items-start justify-center p-6"
+            onClick={e => e.stopPropagation()}>
 
             {previewFileType === 'image' && (
               <div className="overflow-auto max-w-full">
                 <img
                   src={previewUrl}
                   alt={previewLabel}
-                  crossOrigin="anonymous"
                   className="rounded-lg shadow-2xl border border-white/10 transition-transform duration-150"
                   style={{
                     transform: `scale(${imgZoom})`,
@@ -480,6 +471,7 @@ export default function ApplicationDetail() {
               </div>
             )}
 
+            {/* PDF: native iframe */}
             {previewFileType === 'pdf' && (
               <iframe
                 src={previewUrl}
@@ -489,32 +481,20 @@ export default function ApplicationDetail() {
               />
             )}
 
-            {(previewFileType === 'word' || previewFileType === 'unknown') && (
-              <div className="flex flex-col items-center justify-center gap-5 mt-20 text-center max-w-sm">
-                <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                  <FileText className="w-8 h-8 text-amber-400/60" />
-                </div>
-                <div>
-                  <p className="text-white text-base font-medium">Can't preview this format</p>
-                  <p className="text-white/40 text-sm mt-2 leading-relaxed">
-                    Word documents (.doc / .docx) can't be previewed in the browser.<br />
-                    Download the file to open it.
-                  </p>
-                </div>
-                <a
-                  href={previewUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-5 py-2.5 text-sm text-maine-gold border border-maine-gold/40 rounded-lg hover:bg-maine-gold/10 transition-all"
-                >
-                  <Download className="w-4 h-4" /> Download to open
-                </a>
+            {/* Word: Google Docs Viewer iframe */}
+            {previewFileType === 'word' && (
+              <div className="w-full max-w-4xl flex flex-col gap-3">
+                <p className="text-white/30 text-xs text-center">Rendered via Google Docs Viewer</p>
+                <iframe
+                  src={googleViewerUrl}
+                  className="w-full rounded-lg border border-white/10 shadow-2xl bg-white"
+                  style={{ height: 'calc(100vh - 160px)', minHeight: '500px' }}
+                  title={previewLabel}
+                />
               </div>
             )}
 
           </div>
-
           <p className="text-center text-white/20 text-xs py-2 flex-shrink-0">Click outside to close</p>
         </div>
       )}
