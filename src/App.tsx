@@ -289,7 +289,7 @@ export default function App() {
                   <FileUpload label="Profile Photo *" field="profile_photo" file={files.profile_photo} onFile={setFile} accept="image/*" error={errors.profile_photo} />
                   <FileUpload label="Passport Copy *" field="passport" file={files.passport} onFile={setFile} accept="image/*,.pdf" error={errors.passport} />
                   <FileUpload label="Emirates ID" field="emirates_id" file={files.emirates_id} onFile={setFile} accept="image/*,.pdf" note="Only if you have a UAE visa" />
-                  <FileUpload label="CV / Resume *" field="cv" file={files.cv} onFile={setFile} accept=".pdf,.doc,.docx" error={errors.cv} />
+                  <FileUpload label="CV / Resume *" field="cv" file={files.cv} onFile={setFile} accept=".pdf,.doc,.docx,image/*" note="PDF, Word, JPG or PNG accepted" error={errors.cv} />
                 </Step>
               )}
 
