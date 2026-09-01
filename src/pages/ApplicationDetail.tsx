@@ -357,6 +357,31 @@ export default function ApplicationDetail() {
             <p className="text-white/70 text-sm leading-relaxed">{app.hobbies}</p>
           </Section>
         )}
+        {app.challenge_story && (
+          <Section title="Major Kitchen Challenge">
+            <p className="text-white/70 text-sm leading-relaxed">{app.challenge_story}</p>
+          </Section>
+        )}
+        {app.team_inspiration && (
+          <Section title="Team Inspiration & Leadership">
+            <p className="text-white/70 text-sm leading-relaxed">{app.team_inspiration}</p>
+          </Section>
+        )}
+        {app.essential_technique && (
+          <Section title="Essential Cooking Technique">
+            <p className="text-white/70 text-sm leading-relaxed">{app.essential_technique}</p>
+          </Section>
+        )}
+        {app.previous_roles_style && (
+          <Section title="Previous Roles & Culinary Style">
+            <p className="text-white/70 text-sm leading-relaxed">{app.previous_roles_style}</p>
+          </Section>
+        )}
+        {app.chef_meaning && (
+          <Section title="What Being a Chef Means">
+            <p className="text-white/70 text-sm leading-relaxed">{app.chef_meaning}</p>
+          </Section>
+        )}
 
         <Section title="Documents">
           <div className="space-y-4">
