@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
 import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut, CheckSquare, Square } from 'lucide-react'
 import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
@@ -90,38 +89,220 @@ export default function ApplicationDetail() {
   }
 
   const handleExportPDF = async () => {
-    if (!printRef.current || !app) return
+    if (!app) return
     setExporting(true)
     setShowExportModal(false)
-    setExportProgress('Capturing profile...')
+    setExportProgress('Building PDF...')
 
     try {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
+      const marginL = 15
+      const marginR = 15
+      const contentW = pageW - marginL - marginR
+      let y = 0
 
-      // ── Step 1: capture the profile page ──────────────────────
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#2e2e2e',
-        logging: false,
-      })
-
-      const profileImgH = (canvas.height * pageW) / canvas.width
-      const profileData = canvas.toDataURL('image/jpeg', 0.92)
-      let yOffset = 0
-      let remaining = profileImgH
-
-      while (remaining > 0) {
-        if (yOffset > 0) pdf.addPage()
-        pdf.addImage(profileData, 'JPEG', 0, -yOffset, pageW, profileImgH)
-        yOffset += pageH
-        remaining -= pageH
+      // ── Helpers ────────────────────────────────────────────────
+      const checkPage = (needed: number) => {
+        if (y + needed > pageH - 15) { pdf.addPage(); y = 20 }
       }
 
-      // ── Step 2: append image documents as pages ────────────────
+      const sectionTitle = (title: string) => {
+        checkPage(14)
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(160, 130, 60)
+        pdf.text(title.toUpperCase(), marginL, y)
+        y += 3
+        pdf.setDrawColor(160, 130, 60)
+        pdf.setLineWidth(0.3)
+        pdf.line(marginL, y, pageW - marginR, y)
+        y += 5
+        pdf.setTextColor(40, 40, 40)
+      }
+
+      const paragraph = (text: string) => {
+        if (!text) return
+        pdf.setFontSize(9.5)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(40, 40, 40)
+        const lines = pdf.splitTextToSize(text, contentW)
+        lines.forEach((line: string) => {
+          checkPage(6)
+          pdf.text(line, marginL, y)
+          y += 5.5
+        })
+        y += 2
+      }
+
+      // ── PAGE 1: Header ─────────────────────────────────────────
+      // Gold header bar
+      pdf.setFillColor(160, 130, 60)
+      pdf.rect(0, 0, pageW, 28, 'F')
+
+      // Profile photo
+      let photoLoaded = false
+      if (app.profile_photo_url) {
+        try {
+          const { dataUrl } = await imageUrlToDataUrl(app.profile_photo_url)
+          pdf.addImage(dataUrl, 'JPEG', marginL, 4, 20, 20)
+          photoLoaded = true
+        } catch { /* skip */ }
+      }
+      const nameX = photoLoaded ? marginL + 24 : marginL
+
+      // Name & position
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(16)
+      pdf.setTextColor(255, 255, 255)
+      pdf.text(`${app.first_name} ${app.last_name}`, nameX, 13)
+      pdf.setFontSize(10)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(255, 240, 200)
+      pdf.text(app.position_applied || '', nameX, 20)
+
+      // Right side: email / phone / date
+      pdf.setFontSize(8)
+      pdf.setTextColor(255, 255, 255)
+      const appliedDate = app.created_at
+        ? new Date(app.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+        : ''
+      pdf.text(app.email || '', pageW - marginR, 10, { align: 'right' })
+      pdf.text(app.phone || '', pageW - marginR, 16, { align: 'right' })
+      pdf.text(`Applied ${appliedDate}`, pageW - marginR, 22, { align: 'right' })
+
+      y = 36
+
+      // ── 2-column grid: Personal + UAE ─────────────────────────
+      const col1X = marginL
+      const col2X = pageW / 2 + 3
+      const colW2 = pageW / 2 - marginR - 3
+
+      // Personal
+      const yBefore = y
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(160, 130, 60)
+      pdf.text('PERSONAL', col1X, y)
+      y += 3
+      pdf.setDrawColor(160, 130, 60)
+      pdf.setLineWidth(0.3)
+      pdf.line(col1X, y, col1X + colW2, y)
+      y += 5
+
+      const rowHalf = (label: string, value: string | null | undefined, x: number) => {
+        if (!value) return
+        pdf.setFontSize(8.5)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(130, 130, 130)
+        pdf.text(label, x, y)
+        pdf.setTextColor(30, 30, 30)
+        pdf.setFont('helvetica', 'bold')
+        const lines = pdf.splitTextToSize(value, colW2 - 32)
+        pdf.text(lines, x + 32, y)
+        y += lines.length * 5
+      }
+
+      rowHalf('Date of Birth', app.date_of_birth, col1X)
+      rowHalf('Nationality', app.nationality, col1X)
+      rowHalf('Address', app.current_address, col1X)
+      if (app.instagram) rowHalf('Instagram', app.instagram, col1X)
+      const yAfterCol1 = y
+
+      // UAE Status (col 2 — reset y to yBefore)
+      y = yBefore
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(160, 130, 60)
+      pdf.text('UAE STATUS', col2X, y)
+      y += 3
+      pdf.line(col2X, y, col2X + colW2, y)
+      y += 5
+      rowHalf('Driving License', app.uae_driving_license, col2X)
+      rowHalf('Accommodation', app.requires_accommodation, col2X)
+      rowHalf('Eligibility', app.uae_eligibility, col2X)
+      rowHalf('Joining', app.joining_availability, col2X)
+      const yAfterCol2 = y
+
+      y = Math.max(yAfterCol1, yAfterCol2) + 8
+
+      // ── 2-column grid: Professional + Languages ────────────────
+      const yBefore2 = y
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(160, 130, 60)
+      pdf.text('PROFESSIONAL', col1X, y)
+      y += 3
+      pdf.line(col1X, y, col1X + colW2, y)
+      y += 5
+      rowHalf('Current Position', app.current_position, col1X)
+      rowHalf('Experience', app.experience_years ? `${app.experience_years} years` : null, col1X)
+      rowHalf('Workplace', app.current_workplace, col1X)
+      rowHalf('Salary Expected', app.salary_expectation ? `AED ${app.salary_expectation}/month` : null, col1X)
+      rowHalf('Education', app.education, col1X)
+      const yAfterCol3 = y
+
+      y = yBefore2
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(160, 130, 60)
+      pdf.text('LANGUAGES', col2X, y)
+      y += 3
+      pdf.line(col2X, y, col2X + colW2, y)
+      y += 5
+      rowHalf('English — Dialog', app.english_dialog, col2X)
+      rowHalf('English — Reading', app.english_reading, col2X)
+      rowHalf('English — Writing', app.english_writing, col2X)
+      if (app.other_languages) rowHalf('Other Languages', app.other_languages, col2X)
+      const yAfterCol4 = y
+
+      y = Math.max(yAfterCol3, yAfterCol4) + 8
+
+      // ── Full-width sections ────────────────────────────────────
+      if (app.previous_workplaces) {
+        sectionTitle('Previous Workplaces')
+        paragraph(app.previous_workplaces)
+        y += 2
+      }
+      if (app.skills_expertise) {
+        sectionTitle('Skills & Expertise')
+        paragraph(app.skills_expertise)
+        y += 2
+      }
+      if (app.courses_workshops) {
+        sectionTitle('Courses & Workshops')
+        paragraph(app.courses_workshops)
+        y += 2
+      }
+      if (app.employment_references) {
+        sectionTitle('Employment References')
+        paragraph(app.employment_references)
+        y += 2
+      }
+      if (app.hobbies) {
+        sectionTitle('Hobbies & Interests')
+        paragraph(app.hobbies)
+        y += 2
+      }
+
+      // ── Chef Questions ─────────────────────────────────────────
+      const chefQs: [string, string | null | undefined][] = [
+        ['Major Kitchen Challenge', app.challenge_story],
+        ['Team Inspiration & Leadership', app.team_inspiration],
+        ['Essential Cooking Technique', app.essential_technique],
+        ['Previous Roles & Culinary Style', app.previous_roles_style],
+        ['What Being a Chef Means', app.chef_meaning],
+      ]
+      for (const [title, answer] of chefQs) {
+        if (answer) {
+          sectionTitle(title)
+          paragraph(answer)
+          y += 2
+        }
+      }
+
+      // ── Documents ─────────────────────────────────────────────
       if (includeDocs) {
         const docs = [
           { label: 'Profile Photo', url: app.profile_photo_url ?? '' },
@@ -138,43 +319,35 @@ export default function ApplicationDetail() {
             try {
               const { dataUrl, w, h } = await imageUrlToDataUrl(doc.url)
               pdf.addPage()
-
-              // Section label
-              pdf.setFontSize(10)
-              pdf.setTextColor(180, 150, 80)
-              pdf.text(doc.label, 10, 10)
-
-              // Fit image in page (margin: 10mm sides, 15mm top, 10mm bottom)
-              const maxW = pageW - 20
-              const maxH = pageH - 25
+              y = 15
+              sectionTitle(doc.label)
+              const maxW = contentW
+              const maxH = pageH - y - 15
               const ratio = Math.min(maxW / w, maxH / h)
               const iw = w * ratio
               const ih = h * ratio
-              pdf.addImage(dataUrl, 'JPEG', (pageW - iw) / 2, 15, iw, ih)
+              pdf.addImage(dataUrl, 'JPEG', (pageW - iw) / 2, y, iw, ih)
             } catch {
-              // image failed to load — add a note page
               pdf.addPage()
-              pdf.setFontSize(10)
-              pdf.setTextColor(180, 150, 80)
-              pdf.text(doc.label, 10, 10)
-              pdf.setTextColor(150, 150, 150)
+              y = 15
+              sectionTitle(doc.label)
               pdf.setFontSize(9)
-              pdf.text('Could not embed this image (CORS restriction). Download it separately.', 10, 25)
+              pdf.setTextColor(150, 150, 150)
+              pdf.text('Could not embed image. Download separately:', marginL, y)
+              y += 6
               pdf.setTextColor(100, 100, 200)
-              pdf.text(doc.url, 10, 35)
+              pdf.text(doc.url, marginL, y)
             }
-          } else if (type === 'pdf' || type === 'word') {
-            // Can't embed PDF/Word pages — add a reference page
+          } else {
             pdf.addPage()
-            pdf.setFontSize(10)
-            pdf.setTextColor(180, 150, 80)
-            pdf.text(doc.label + ` (${getExt(doc.url)} — download separately)`, 10, 10)
-            pdf.setTextColor(150, 150, 150)
+            y = 15
+            sectionTitle(`${doc.label} (${getExt(doc.url)} — download separately)`)
             pdf.setFontSize(9)
-            pdf.text('This document format cannot be embedded in a PDF.', 10, 22)
-            pdf.text('Download link:', 10, 32)
-            pdf.setTextColor(100, 150, 220)
-            pdf.textWithLink(doc.url, 10, 42, { url: doc.url })
+            pdf.setTextColor(150, 150, 150)
+            pdf.text('This document format cannot be embedded. Download link:', marginL, y)
+            y += 6
+            pdf.setTextColor(100, 100, 200)
+            pdf.textWithLink(doc.url, marginL, y, { url: doc.url })
           }
         }
       }
