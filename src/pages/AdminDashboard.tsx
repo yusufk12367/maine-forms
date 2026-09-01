@@ -54,8 +54,13 @@ export default function AdminDashboard() {
     if (!deleteTarget?.id) return
     setDeleting(true)
     try {
-      // Delete the DB row
-      await supabase.from('applications').delete().eq('id', deleteTarget.id)
+      const { error } = await supabase.from('applications').delete().eq('id', deleteTarget.id)
+      if (error) {
+        console.error('Delete error:', error)
+        alert(`Delete failed: ${error.message}`)
+        setDeleting(false)
+        return
+      }
       setApplications(prev => prev.filter(a => a.id !== deleteTarget.id))
       setDeleteTarget(null)
     } catch (err) {
