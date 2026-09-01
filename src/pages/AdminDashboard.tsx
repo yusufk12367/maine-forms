@@ -21,6 +21,7 @@ export default function AdminDashboard() {
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
+    document.title = 'The MAINE Careers - Admin'
     if (!sessionStorage.getItem('maine_admin')) {
       navigate('/admin')
       return

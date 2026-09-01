@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
+
+  useEffect(() => { document.title = 'The MAINE Careers - Admin' }, [])
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
