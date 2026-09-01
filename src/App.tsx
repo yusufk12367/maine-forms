@@ -31,6 +31,7 @@ const emptyForm: Omit<Application, 'id' | 'created_at' | 'status'> = {
   position_applied: '', current_position: '', experience_years: '', current_workplace: '',
   previous_workplaces: '', salary_expectation: '', education: '', courses_workshops: '',
   skills_expertise: '', employment_references: '', hobbies: '',
+  challenge_story: '', team_inspiration: '', essential_technique: '', previous_roles_style: '', chef_meaning: '',
 }
 
 export default function App() {
@@ -90,6 +91,13 @@ export default function App() {
       if (!form.skills_expertise.trim()) e.skills_expertise = 'Skills & expertise is required'
     }
     if (s === 8) {
+      if (!form.challenge_story.trim()) e.challenge_story = 'Please answer this question'
+      if (!form.team_inspiration.trim()) e.team_inspiration = 'Please answer this question'
+      if (!form.essential_technique.trim()) e.essential_technique = 'Please answer this question'
+      if (!form.previous_roles_style.trim()) e.previous_roles_style = 'Please answer this question'
+      if (!form.chef_meaning.trim()) e.chef_meaning = 'Please answer this question'
+    }
+    if (s === 9) {
       if (!files.profile_photo) e.profile_photo = 'Profile photo is required'
       if (!files.passport) e.passport = 'Passport copy is required'
       if (!files.cv) e.cv = 'CV is required'
@@ -112,7 +120,7 @@ export default function App() {
   }
 
   const handleSubmit = async () => {
-    const e = validate(8)
+    const e = validate(9)
     if (Object.keys(e).length > 0) { setErrors(e); return }
     setUploading(true)
     setSubmitError('')
@@ -134,7 +142,7 @@ export default function App() {
     setUploading(false)
   }
 
-  const TOTAL_STEPS = 9
+  const TOTAL_STEPS = 10
   const progress = Math.round((step / TOTAL_STEPS) * 100)
 
   if (submitted) return <SuccessScreen name={form.first_name} />
@@ -285,6 +293,16 @@ export default function App() {
               )}
 
               {step === 8 && (
+                <Step title="Chef Questions" subtitle="Tell us more about your culinary philosophy.">
+                  <TextArea label="Tell us about a time you faced a major challenge in the kitchen and how you handled it. *" value={form.challenge_story} onChange={v => set('challenge_story', v)} placeholder="Describe the situation, your actions, and the outcome..." rows={5} error={errors.challenge_story} />
+                  <TextArea label="How do you inspire and work with your team to maintain high standards under pressure? *" value={form.team_inspiration} onChange={v => set('team_inspiration', v)} placeholder="Share your approach to team leadership and motivation..." rows={5} error={errors.team_inspiration} />
+                  <TextArea label="Which cooking technique do you consider essential for a great chef, and why? *" value={form.essential_technique} onChange={v => set('essential_technique', v)} placeholder="Name the technique and explain its importance to you..." rows={4} error={errors.essential_technique} />
+                  <TextArea label="Can you tell us about your previous roles and how they have shaped your culinary style? *" value={form.previous_roles_style} onChange={v => set('previous_roles_style', v)} placeholder="Describe your journey and how each role influenced you..." rows={5} error={errors.previous_roles_style} />
+                  <TextArea label="What does being a chef mean to you, beyond cooking? *" value={form.chef_meaning} onChange={v => set('chef_meaning', v)} placeholder="Share your deeper motivation and passion for the craft..." rows={4} error={errors.chef_meaning} />
+                </Step>
+              )}
+
+              {step === 9 && (
                 <Step title="Documents" subtitle="Upload your documents. All files are securely stored.">
                   <FileUpload label="Profile Photo *" field="profile_photo" file={files.profile_photo} onFile={setFile} accept="image/*" error={errors.profile_photo} />
                   <FileUpload label="Passport Copy *" field="passport" file={files.passport} onFile={setFile} accept="image/*,.pdf" error={errors.passport} />
@@ -293,7 +311,7 @@ export default function App() {
                 </Step>
               )}
 
-              {step === 9 && (
+              {step === 10 && (
                 <Step title="Review & Submit" subtitle="Please review before submitting.">
                   <div className="space-y-0 border border-white/10 rounded">
                     {[
@@ -326,7 +344,7 @@ export default function App() {
                   className="flex items-center gap-2 px-5 py-3 border border-white/20 text-white/50 text-sm hover:border-white/50 hover:text-white transition-all">
                   <ChevronLeft className="w-4 h-4" /> Back
                 </button>
-                {step < 9 ? (
+                {step < 10 ? (
                   <button onClick={next}
                     className="flex-1 border border-white/60 text-white py-3 text-sm tracking-[0.2em] uppercase hover:bg-white hover:text-[#3a3a3a] transition-all duration-300 flex items-center justify-center gap-2 font-light">
                     Continue <ChevronRight className="w-4 h-4" />

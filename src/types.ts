@@ -47,4 +47,11 @@ export interface Application {
 
   // Extra
   hobbies: string
+
+  // Chef Questions
+  challenge_story: string
+  team_inspiration: string
+  essential_technique: string
+  previous_roles_style: string
+  chef_meaning: string
 }
