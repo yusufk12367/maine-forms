@@ -46,8 +46,24 @@ CREATE TABLE IF NOT EXISTS applications (
 
   -- References & Extra
   employment_references TEXT,
-  hobbies TEXT
+  hobbies TEXT,
+
+  -- Chef Questions
+  challenge_story TEXT,
+  team_inspiration TEXT,
+  essential_technique TEXT,
+  previous_roles_style TEXT,
+  chef_meaning TEXT
 );
+
+-- If the table already exists (created before Chef Questions were added),
+-- run this to add the missing columns:
+ALTER TABLE applications
+  ADD COLUMN IF NOT EXISTS challenge_story      TEXT,
+  ADD COLUMN IF NOT EXISTS team_inspiration     TEXT,
+  ADD COLUMN IF NOT EXISTS essential_technique  TEXT,
+  ADD COLUMN IF NOT EXISTS previous_roles_style TEXT,
+  ADD COLUMN IF NOT EXISTS chef_meaning         TEXT;
 
 -- Enable Row Level Security
 ALTER TABLE applications ENABLE ROW LEVEL SECURITY;

@@ -112,8 +112,51 @@ export default function App() {
     setStep(s => s + 1)
   }
 
-  const uploadFile = async (file: File, path: string): Promise<string> => {
-    const { error } = await supabase.storage.from('applications').upload(path, file, { upsert: true })
+  // Convert an image file (incl. iPhone HEIC / large photos) to a web-safe,
+  // downscaled JPEG blob using the browser canvas. Works on iOS Safari.
+  // Non-image files (PDF/Word) are returned unchanged.
+  const toUploadable = async (file: File): Promise<{ blob: Blob; ext: string }> => {
+    const isImage = file.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp|bmp|gif)$/i.test(file.name)
+    if (!isImage) {
+      const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+      return { blob: file, ext }
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader()
+        fr.onload = () => resolve(fr.result as string)
+        fr.onerror = () => reject(new Error('read failed'))
+        fr.readAsDataURL(file)
+      })
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new Image()
+        im.onload = () => resolve(im)
+        im.onerror = () => reject(new Error('decode failed'))
+        im.src = dataUrl
+      })
+      const MAX = 1600
+      let { naturalWidth: w, naturalHeight: h } = img
+      if (w > MAX || h > MAX) {
+        const scale = MAX / Math.max(w, h)
+        w = Math.round(w * scale); h = Math.round(h * scale)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.85))
+      if (blob) return { blob, ext: 'jpg' }
+    } catch {
+      // Fall back to the original file if conversion fails for any reason.
+    }
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    return { blob: file, ext }
+  }
+
+  const uploadFile = async (file: File, pathBase: string): Promise<string> => {
+    const { blob, ext } = await toUploadable(file)
+    const path = `${pathBase}.${ext}`
+    const contentType = ext === 'jpg' ? 'image/jpeg' : (file.type || undefined)
+    const { error } = await supabase.storage.from('applications').upload(path, blob, { upsert: true, contentType })
     if (error) throw error
     const { data } = supabase.storage.from('applications').getPublicUrl(path)
     return data.publicUrl
@@ -128,16 +171,17 @@ export default function App() {
       const ts = Date.now()
       const base = `${ts}_${form.first_name}_${form.last_name}`.replace(/\s/g, '_')
       let profile_photo_url = '', passport_url = '', emirates_id_url = '', cv_url = ''
-      if (files.profile_photo) profile_photo_url = await uploadFile(files.profile_photo, `${base}/profile.${files.profile_photo.name.split('.').pop()}`)
-      if (files.passport) passport_url = await uploadFile(files.passport, `${base}/passport.${files.passport.name.split('.').pop()}`)
-      if (files.emirates_id) emirates_id_url = await uploadFile(files.emirates_id, `${base}/eid.${files.emirates_id.name.split('.').pop()}`)
-      if (files.cv) cv_url = await uploadFile(files.cv, `${base}/cv.${files.cv.name.split('.').pop()}`)
+      if (files.profile_photo) profile_photo_url = await uploadFile(files.profile_photo, `${base}/profile`)
+      if (files.passport) passport_url = await uploadFile(files.passport, `${base}/passport`)
+      if (files.emirates_id) emirates_id_url = await uploadFile(files.emirates_id, `${base}/eid`)
+      if (files.cv) cv_url = await uploadFile(files.cv, `${base}/cv`)
       const { error } = await supabase.from('applications').insert([{ ...form, profile_photo_url, passport_url, emirates_id_url, cv_url, status: 'new' }])
       if (error) throw error
       setSubmitted(true)
     } catch (err: any) {
-      setSubmitError('Something went wrong. Please try again.')
-      console.error(err)
+      const reason = err?.message || err?.error_description || 'Unknown error'
+      setSubmitError(`Submission failed: ${reason}. Please try again, or contact us if it persists.`)
+      console.error('Application submit failed:', err)
     }
     setUploading(false)
   }
@@ -304,10 +348,10 @@ export default function App() {
 
               {step === 9 && (
                 <Step title="Documents" subtitle="Upload your documents. All files are securely stored.">
-                  <FileUpload label="Profile Photo *" field="profile_photo" file={files.profile_photo} onFile={setFile} accept="image/*" error={errors.profile_photo} />
-                  <FileUpload label="Passport Copy *" field="passport" file={files.passport} onFile={setFile} accept="image/*,.pdf" error={errors.passport} />
-                  <FileUpload label="Emirates ID" field="emirates_id" file={files.emirates_id} onFile={setFile} accept="image/*,.pdf" note="Only if you have a UAE visa" />
-                  <FileUpload label="CV / Resume *" field="cv" file={files.cv} onFile={setFile} accept=".pdf,.doc,.docx,image/*" note="PDF, Word, JPG or PNG accepted" error={errors.cv} />
+                  <FileUpload label="Profile Photo *" field="profile_photo" file={files.profile_photo} onFile={setFile} accept="image/*,.heic,.heif" error={errors.profile_photo} />
+                  <FileUpload label="Passport Copy *" field="passport" file={files.passport} onFile={setFile} accept="image/*,.heic,.heif,.pdf" error={errors.passport} />
+                  <FileUpload label="Emirates ID" field="emirates_id" file={files.emirates_id} onFile={setFile} accept="image/*,.heic,.heif,.pdf" note="Only if you have a UAE visa" />
+                  <FileUpload label="CV / Resume *" field="cv" file={files.cv} onFile={setFile} accept=".pdf,.doc,.docx,image/*,.heic,.heif" note="PDF, Word, JPG or PNG accepted" error={errors.cv} />
                 </Step>
               )}
 
