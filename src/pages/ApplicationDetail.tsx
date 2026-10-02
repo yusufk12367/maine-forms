@@ -44,6 +44,26 @@ async function imageUrlToDataUrl(url: string): Promise<{ dataUrl: string; w: num
   })
 }
 
+// Fetch a file as a blob and trigger a real browser download (no new tab)
+async function blobDownload(url: string, filename: string) {
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const blob = await resp.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000)
+  } catch (err) {
+    console.error('Download failed, falling back to new tab:', err)
+    window.open(url, '_blank', 'noopener noreferrer')
+  }
+}
+
 export default function ApplicationDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -405,12 +425,15 @@ export default function ApplicationDetail() {
             >
               <Eye className="w-3.5 h-3.5" /> Preview
             </button>
-            <a
-              href={url} download target="_blank" rel="noopener noreferrer"
+            <button
+              onClick={() => {
+                const ext = url.split('?')[0].split('.').pop() ?? 'file'
+                blobDownload(url, `${label.replace(/\s+/g, '_')}.${ext}`)
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
             >
               <Download className="w-3.5 h-3.5" /> Download
-            </a>
+            </button>
           </div>
         </div>
         {type === 'word' && (
@@ -637,11 +660,16 @@ export default function ApplicationDetail() {
                   </button>
                 </div>
               )}
-              <a href={previewUrl} download target="_blank" rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all">
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  const ext = previewUrl!.split('?')[0].split('.').pop() ?? 'file'
+                  blobDownload(previewUrl!, `${previewLabel.replace(/\s+/g, '_')}.${ext}`)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-maine-gold border border-maine-gold/30 rounded-lg hover:bg-maine-gold/10 transition-all"
+              >
                 <Download className="w-3.5 h-3.5" /> Download
-              </a>
+              </button>
               <button onClick={closePreview}
                 className="p-1.5 text-white/40 hover:text-white transition-colors rounded-lg hover:bg-white/10">
                 <X className="w-5 h-5" />
