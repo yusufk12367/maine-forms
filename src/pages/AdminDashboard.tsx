@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { LogOut, RefreshCw, User, ChevronRight, Search, Trash2, X, ChevronDown } from 'lucide-react'
+import { flagFor } from '../lib/countries'
+import {
+  LogOut, RefreshCw, User, ChevronRight, Search, Trash2, X, ChevronDown,
+  LayoutGrid, List as ListIcon, BarChart3,
+} from 'lucide-react'
 
 const STATUS_COLORS: Record<string, string> = {
   new: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
@@ -19,11 +23,14 @@ const STATUS_CHIP: Record<string, string> = {
 }
 
 const SESSION_KEY = 'maine_dashboard_state'
+type ViewMode = 'grid' | 'list'
 
 interface DashboardState {
   search: string
   filterStatus: string
   filterPosition: string
+  filterNationality: string
+  view: ViewMode
   scrollY: number
 }
 
@@ -47,13 +54,18 @@ export default function AdminDashboard() {
   const [deleteTarget, setDeleteTarget] = useState<Application | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showPositionDropdown, setShowPositionDropdown] = useState(false)
+  const [showNationalityDropdown, setShowNationalityDropdown] = useState(false)
+  const [nationalitySearch, setNationalitySearch] = useState('')
   const positionDropdownRef = useRef<HTMLDivElement>(null)
+  const nationalityDropdownRef = useRef<HTMLDivElement>(null)
   const didRestoreRef = useRef(false)
 
   // ── State that gets saved to sessionStorage ──────────────────
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPosition, setFilterPosition] = useState('all')
+  const [filterNationality, setFilterNationality] = useState('all')
+  const [view, setView] = useState<ViewMode>('grid')
 
   // ── Bootstrap ────────────────────────────────────────────────
   useEffect(() => {
@@ -65,7 +77,7 @@ export default function AdminDashboard() {
     fetchApplications()
   }, [])
 
-  // Restore scroll after data loads (only once per "back" navigation)
+  // Restore state + scroll after data loads (only once per "back" navigation)
   useEffect(() => {
     if (!loading && !didRestoreRef.current) {
       const saved = loadDashboardState()
@@ -73,7 +85,8 @@ export default function AdminDashboard() {
         setSearch(saved.search)
         setFilterStatus(saved.filterStatus)
         setFilterPosition(saved.filterPosition)
-        // Defer scroll so the list has rendered
+        setFilterNationality(saved.filterNationality ?? 'all')
+        if (saved.view) setView(saved.view)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             window.scrollTo({ top: saved.scrollY, behavior: 'instant' })
@@ -84,11 +97,14 @@ export default function AdminDashboard() {
     }
   }, [loading])
 
-  // Close position dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (positionDropdownRef.current && !positionDropdownRef.current.contains(e.target as Node)) {
         setShowPositionDropdown(false)
+      }
+      if (nationalityDropdownRef.current && !nationalityDropdownRef.current.contains(e.target as Node)) {
+        setShowNationalityDropdown(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -139,9 +155,7 @@ export default function AdminDashboard() {
   // Navigate to a profile, saving current state first
   const goToProfile = (id: string) => {
     saveDashboardState({
-      search,
-      filterStatus,
-      filterPosition,
+      search, filterStatus, filterPosition, filterNationality, view,
       scrollY: window.scrollY,
     })
     navigate(`/admin/application/${id}`)
@@ -152,15 +166,51 @@ export default function AdminDashboard() {
     new Set(applications.map(a => a.position_applied).filter(Boolean))
   ).sort() as string[]
 
+  // Nationality counts (across ALL applications, respecting the OTHER filters
+  // so the graph reflects the current status/position/search slice but not
+  // the nationality filter itself — classic faceted-filter behaviour).
+  const nationalityBase = applications.filter(a => {
+    const matchSearch =
+      search === '' ||
+      `${a.first_name} ${a.last_name} ${a.email} ${a.position_applied} ${a.nationality}`
+        .toLowerCase().includes(search.toLowerCase())
+    const matchStatus = filterStatus === 'all' || a.status === filterStatus
+    const matchPosition = filterPosition === 'all' || a.position_applied === filterPosition
+    return matchSearch && matchStatus && matchPosition
+  })
+
+  const nationalityCounts = (() => {
+    const map = new Map<string, number>()
+    for (const a of nationalityBase) {
+      const n = (a.nationality || '').trim() || 'Unknown'
+      map.set(n, (map.get(n) || 0) + 1)
+    }
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  })()
+
+  const maxNatCount = nationalityCounts.length ? nationalityCounts[0].count : 1
+
+  // Full nationality option list for the dropdown (sorted, searchable)
+  const allNationalities = Array.from(
+    new Set(applications.map(a => (a.nationality || '').trim()).filter(Boolean))
+  ).sort() as string[]
+
+  const nationalityOptions = allNationalities.filter(n =>
+    nationalitySearch === '' || n.toLowerCase().includes(nationalitySearch.toLowerCase())
+  )
+
   const filtered = applications.filter(a => {
     const matchSearch =
       search === '' ||
       `${a.first_name} ${a.last_name} ${a.email} ${a.position_applied} ${a.nationality}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
+        .toLowerCase().includes(search.toLowerCase())
     const matchStatus = filterStatus === 'all' || a.status === filterStatus
     const matchPosition = filterPosition === 'all' || a.position_applied === filterPosition
-    return matchSearch && matchStatus && matchPosition
+    const matchNationality =
+      filterNationality === 'all' || (a.nationality || '').trim() === filterNationality
+    return matchSearch && matchStatus && matchPosition && matchNationality
   })
 
   const counts = {
@@ -174,6 +224,7 @@ export default function AdminDashboard() {
   const activeFilterCount = [
     filterStatus !== 'all',
     filterPosition !== 'all',
+    filterNationality !== 'all',
     search !== '',
   ].filter(Boolean).length
 
@@ -181,6 +232,11 @@ export default function AdminDashboard() {
     setSearch('')
     setFilterStatus('all')
     setFilterPosition('all')
+    setFilterNationality('all')
+  }
+
+  const toggleNationality = (name: string) => {
+    setFilterNationality(prev => (prev === name ? 'all' : name))
   }
 
   return (
@@ -224,11 +280,66 @@ export default function AdminDashboard() {
           ))}
         </div>
 
+        {/* ── Nationality graph ── */}
+        {nationalityCounts.length > 0 && (
+          <div className="bg-[#2e2e2e] border border-white/10 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-maine-gold" />
+                <h2 className="text-white text-sm font-medium">Applicants by Nationality</h2>
+                <span className="text-white/30 text-xs">({nationalityCounts.length})</span>
+              </div>
+              {filterNationality !== 'all' && (
+                <button
+                  onClick={() => setFilterNationality('all')}
+                  className="text-maine-gold text-xs hover:underline flex items-center gap-1"
+                >
+                  <X className="w-3 h-3" /> {filterNationality}
+                </button>
+              )}
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {nationalityCounts.map(({ name, count }) => {
+                const active = filterNationality === name
+                const pct = Math.round((count / maxNatCount) * 100)
+                return (
+                  <button
+                    key={name}
+                    onClick={() => toggleNationality(name)}
+                    className="w-full group flex items-center gap-3 text-left"
+                    title={`${count} applicant${count !== 1 ? 's' : ''} from ${name} — click to filter`}
+                  >
+                    <span className="w-6 text-base flex-shrink-0 text-center">{flagFor(name)}</span>
+                    <span className={`w-36 flex-shrink-0 text-xs truncate transition-colors ${
+                      active ? 'text-maine-gold font-medium' : 'text-white/60 group-hover:text-white'
+                    }`}>
+                      {name}
+                    </span>
+                    <span className="flex-1 h-5 bg-white/5 rounded overflow-hidden relative">
+                      <span
+                        className={`absolute inset-y-0 left-0 rounded transition-all duration-500 ease-out ${
+                          active ? 'bg-maine-gold' : 'bg-maine-gold/40 group-hover:bg-maine-gold/70'
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                    <span className={`w-8 flex-shrink-0 text-right text-xs tabular-nums transition-colors ${
+                      active ? 'text-maine-gold font-semibold' : 'text-white/50 group-hover:text-white'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ── Search + Filter row ── */}
         <div className="space-y-2">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {/* Search input */}
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
               <input
                 value={search}
@@ -246,6 +357,28 @@ export default function AdminDashboard() {
               )}
             </div>
 
+            {/* View toggle (grid / list) */}
+            <div className="flex items-center bg-[#2e2e2e] border border-white/10 rounded-lg p-1 flex-shrink-0">
+              <button
+                onClick={() => setView('grid')}
+                className={`p-2 rounded-md transition-all ${
+                  view === 'grid' ? 'bg-maine-gold/15 text-maine-gold' : 'text-white/40 hover:text-white'
+                }`}
+                title="Card grid"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className={`p-2 rounded-md transition-all ${
+                  view === 'list' ? 'bg-maine-gold/15 text-maine-gold' : 'text-white/40 hover:text-white'
+                }`}
+                title="List"
+              >
+                <ListIcon className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* Status filter chip */}
             {filterStatus !== 'all' && (
               <button
@@ -256,6 +389,67 @@ export default function AdminDashboard() {
                 <X className="w-3 h-3" />
               </button>
             )}
+
+            {/* Nationality filter dropdown (searchable) */}
+            <div className="relative flex-shrink-0" ref={nationalityDropdownRef}>
+              <button
+                onClick={() => { setShowNationalityDropdown(v => !v); setNationalitySearch('') }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs transition-all h-full ${
+                  filterNationality !== 'all'
+                    ? 'border-maine-gold/50 bg-maine-gold/10 text-maine-gold'
+                    : 'border-white/10 text-white/40 hover:border-white/30 hover:text-white'
+                }`}
+              >
+                {filterNationality !== 'all' && <span>{flagFor(filterNationality)}</span>}
+                <span className="max-w-[120px] truncate">
+                  {filterNationality === 'all' ? 'Nationality' : filterNationality}
+                </span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${showNationalityDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showNationalityDropdown && (
+                <div className="absolute right-0 top-full mt-1 bg-[#2e2e2e] border border-white/10 rounded-lg shadow-2xl z-20 min-w-[240px] overflow-hidden">
+                  <div className="p-2 border-b border-white/10">
+                    <input
+                      autoFocus
+                      value={nationalitySearch}
+                      onChange={e => setNationalitySearch(e.target.value)}
+                      placeholder="Search country..."
+                      className="w-full bg-[#3a3a3a] border border-white/10 rounded px-3 py-2 text-xs text-white placeholder-white/30 focus:border-maine-gold transition-colors"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => { setFilterNationality('all'); setShowNationalityDropdown(false) }}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                        filterNationality === 'all'
+                          ? 'text-maine-gold bg-maine-gold/10'
+                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      All Nationalities
+                    </button>
+                    {nationalityOptions.map(n => (
+                      <button
+                        key={n}
+                        onClick={() => { setFilterNationality(n); setShowNationalityDropdown(false) }}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2 ${
+                          filterNationality === n
+                            ? 'text-maine-gold bg-maine-gold/10'
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span>{flagFor(n)}</span>
+                        <span className="truncate">{n}</span>
+                      </button>
+                    ))}
+                    {nationalityOptions.length === 0 && (
+                      <p className="px-4 py-3 text-white/30 text-xs">No match</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Position filter dropdown */}
             <div className="relative flex-shrink-0" ref={positionDropdownRef}>
@@ -302,7 +496,7 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Clear all button — shows when any filter is active */}
+            {/* Clear all button */}
             {activeFilterCount > 0 && (
               <button
                 onClick={clearAllFilters}
@@ -314,9 +508,10 @@ export default function AdminDashboard() {
           </div>
 
           {/* Result count */}
-          {(search || filterStatus !== 'all' || filterPosition !== 'all') && (
+          {activeFilterCount > 0 && (
             <p className="text-white/30 text-xs px-1">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+              {filterNationality !== 'all' && <span> · {filterNationality}</span>}
               {filterPosition !== 'all' && <span> · {filterPosition}</span>}
               {filterStatus !== 'all' && <span> · {filterStatus}</span>}
               {search && <span> · "{search}"</span>}
@@ -324,12 +519,67 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* Table */}
+        {/* Results */}
         {loading ? (
           <div className="text-center py-20 text-white/30">Loading...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-white/30">No applications found.</div>
+        ) : view === 'grid' ? (
+          /* ── CARD GRID ── */
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {filtered.map(app => (
+              <div
+                key={app.id}
+                onClick={() => goToProfile(app.id!)}
+                className="relative bg-[#2e2e2e] border border-white/5 rounded-xl p-4 cursor-pointer hover:border-maine-gold/40 hover:-translate-y-1 transition-all duration-200 group"
+              >
+                {/* Delete (hover) */}
+                <button
+                  onClick={e => confirmDelete(app, e)}
+                  className="absolute top-2 right-2 p-1.5 text-white/0 group-hover:text-white/30 hover:!text-red-400 hover:bg-red-400/10 rounded transition-all"
+                  title="Delete application"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
+                {/* Photo */}
+                <div className="flex justify-center">
+                  {app.profile_photo_url ? (
+                    <img
+                      src={app.profile_photo_url}
+                      alt=""
+                      className="w-20 h-20 rounded-full object-cover border-2 border-white/10 group-hover:border-maine-gold/40 transition-colors"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-[#333333] border-2 border-white/10 flex items-center justify-center">
+                      <User className="w-8 h-8 text-white/30" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Name + info */}
+                <div className="text-center mt-3 space-y-0.5">
+                  <p className="text-white font-medium text-sm truncate">
+                    {app.first_name} {app.last_name}
+                  </p>
+                  <p className="text-white/40 text-xs truncate">{app.position_applied || '—'}</p>
+                  <p className="text-white/50 text-xs flex items-center justify-center gap-1">
+                    <span>{flagFor(app.nationality)}</span>
+                    <span className="truncate">{app.nationality || 'Unknown'}</span>
+                  </p>
+                </div>
+
+                {/* Status badge */}
+                <div className="flex justify-center mt-3">
+                  <span className={`text-[10px] px-2.5 py-1 rounded-full border capitalize ${STATUS_COLORS[app.status || 'new']}`}>
+                    {app.status || 'new'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          /* ── LIST ── */
           <div className="space-y-2">
             {filtered.map(app => (
               <div
@@ -353,7 +603,8 @@ export default function AdminDashboard() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-medium">{app.first_name} {app.last_name}</p>
-                  <p className="text-white/40 text-xs truncate">
+                  <p className="text-white/40 text-xs truncate flex items-center gap-1">
+                    <span>{flagFor(app.nationality)}</span>
                     {app.position_applied} · {app.nationality} · {app.email}
                   </p>
                 </div>
