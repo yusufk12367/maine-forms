@@ -208,64 +208,114 @@ export const COUNTRIES: Country[] = [
   { name: 'Zimbabwe', iso2: 'ZW' },
 ]
 
-// Common aliases / alternate spellings that appear in free-text intake forms.
+// Demonyms, alternate spellings, and common misspellings seen in free-text
+// intake forms. Keys are lowercased. Values are canonical COUNTRIES names.
+// This map is what makes "Indian" / "India" / "indian" / "Imdian" all count
+// as one bar on the nationality chart.
 const ALIASES: Record<string, string> = {
-  usa: 'United States',
-  'u.s.a.': 'United States',
-  'u.s.': 'United States',
-  america: 'United States',
-  american: 'United States',
-  uk: 'United Kingdom',
-  'u.k.': 'United Kingdom',
-  britain: 'United Kingdom',
-  british: 'United Kingdom',
-  england: 'United Kingdom',
-  uae: 'United Arab Emirates',
-  emirati: 'United Arab Emirates',
-  filipino: 'Philippines',
-  filipina: 'Philippines',
-  pinoy: 'Philippines',
-  indian: 'India',
-  nepali: 'Nepal',
-  nepalese: 'Nepal',
-  'sri lankan': 'Sri Lanka',
-  srilankan: 'Sri Lanka',
-  bangladeshi: 'Bangladesh',
+  // United States
+  usa: 'United States', 'u.s.a.': 'United States', 'u.s.': 'United States',
+  america: 'United States', american: 'United States',
+  // United Kingdom
+  uk: 'United Kingdom', 'u.k.': 'United Kingdom', britain: 'United Kingdom',
+  british: 'United Kingdom', england: 'United Kingdom', englishman: 'United Kingdom',
+  // UAE
+  uae: 'United Arab Emirates', emirati: 'United Arab Emirates',
+  // India
+  indian: 'India', imdian: 'India',
+  // Nepal
+  nepali: 'Nepal', nepalese: 'Nepal', nepales: 'Nepal', nepalees: 'Nepal',
+  // Uganda
+  ugandan: 'Uganda',
+  // Philippines
+  filipino: 'Philippines', filipina: 'Philippines', filipinos: 'Philippines',
+  pinoy: 'Philippines', filipimo: 'Philippines', philippine: 'Philippines',
+  phillipines: 'Philippines', phillippines: 'Philippines', pilipino: 'Philippines',
+  // Sri Lanka
+  'sri lankan': 'Sri Lanka', srilankan: 'Sri Lanka', srilanka: 'Sri Lanka',
+  'sri lanken': 'Sri Lanka', 'buddism sri lanka': 'Sri Lanka',
+  'sri lankans': 'Sri Lanka',
+  // Myanmar
+  burmese: 'Myanmar', burma: 'Myanmar',
+  // Pakistan
   pakistani: 'Pakistan',
+  // Cameroon
+  cameroonian: 'Cameroon',
+  // Egypt
   egyptian: 'Egypt',
+  // Kenya
+  kenyan: 'Kenya',
+  // Ghana
+  ghanaian: 'Ghana', ghanian: 'Ghana', ghanaese: 'Ghana',
+  // Indonesia
+  indonesian: 'Indonesia',
+  // Turkey
+  turkish: 'Turkey', turkiye: 'Turkey',
+  // Zimbabwe
+  zimbabwean: 'Zimbabwe',
+  // Bangladesh
+  bangladeshi: 'Bangladesh',
+  // Benin
+  beninese: 'Benin',
+  // Colombia
+  colombian: 'Colombia',
+  // Lebanon
+  lebanese: 'Lebanon', lebenese: 'Lebanon',
+  // Mauritius
+  mauritian: 'Mauritius',
+  // Morocco
   moroccan: 'Morocco',
-  turkish: 'Turkey',
-  turkiye: 'Turkey',
-  russian: 'Russia',
-  'south korean': 'South Korea',
-  korean: 'South Korea',
-  korea: 'South Korea',
-  burmese: 'Myanmar',
-  burma: 'Myanmar',
-  ivorian: 'Ivory Coast',
-  "cote d'ivoire": 'Ivory Coast',
-  czechia: 'Czech Republic',
-  'congo-brazzaville': 'Congo',
+  // Nigeria
+  nigerian: 'Nigeria',
+  // Uzbekistan
+  uzbek: 'Uzbekistan', uzbekistani: 'Uzbekistan',
+  // Other common demonyms (future-proofing)
+  russian: 'Russia', 'south korean': 'South Korea', korean: 'South Korea',
+  korea: 'South Korea', ivorian: 'Ivory Coast', "cote d'ivoire": 'Ivory Coast',
+  czechia: 'Czech Republic', 'congo-brazzaville': 'Congo',
   'congo-kinshasa': 'Democratic Republic of the Congo',
-  drc: 'Democratic Republic of the Congo',
-  swaziland: 'Eswatini',
-  macedonia: 'North Macedonia',
+  drc: 'Democratic Republic of the Congo', swaziland: 'Eswatini',
+  macedonia: 'North Macedonia', ethiopian: 'Ethiopia', tanzanian: 'Tanzania',
+  chinese: 'China', japanese: 'Japan', vietnamese: 'Vietnam',
+  thai: 'Thailand', malaysian: 'Malaysia', singaporean: 'Singapore',
+  afghan: 'Afghanistan', iranian: 'Iran', iraqi: 'Iraq', syrian: 'Syria',
+  jordanian: 'Jordan', 'saudi arabian': 'Saudi Arabia', saudi: 'Saudi Arabia',
+  yemeni: 'Yemen', sudanese: 'Sudan', somali: 'Somalia', eritrean: 'Eritrea',
+  rwandan: 'Rwanda', bhutanese: 'Bhutan', maldivian: 'Maldives',
 }
 
 // name -> ISO2 lookup (lowercased)
 const NAME_TO_ISO = new Map<string, string>()
 for (const c of COUNTRIES) NAME_TO_ISO.set(c.name.toLowerCase(), c.iso2)
 
-/** Resolve a free-text nationality string to a canonical country name, or null. */
-export function canonicalCountryName(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const key = raw.trim().toLowerCase()
-  if (!key) return null
+/**
+ * Normalize any free-text nationality string to a canonical country name.
+ * Handles demonyms (Indian->India), misspellings (Imdian->India),
+ * casing/whitespace (SRILANKA->Sri Lanka), and junk (returns 'Unknown').
+ * This is the single source of truth for grouping the nationality chart.
+ */
+export function normalizeNationality(raw: string | null | undefined): string {
+  if (!raw) return 'Unknown'
+  const key = raw.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!key) return 'Unknown'
+  // direct country-name match
   if (NAME_TO_ISO.has(key)) {
     return COUNTRIES.find(c => c.iso2 === NAME_TO_ISO.get(key))!.name
   }
+  // demonym / misspelling match
   if (ALIASES[key]) return ALIASES[key]
-  return null
+  // reject obvious junk: contains a comma/digit, or isn't mostly letters
+  if (/[,;0-9]/.test(key)) return 'Unknown'
+  const letters = (key.match(/[a-z]/g) || []).length
+  if (letters < 3 || letters < key.replace(/\s/g, '').length * 0.6) return 'Unknown'
+  // unknown but plausible — Title-case so it still displays reasonably
+  return raw.trim().replace(/\b\w/g, m => m.toUpperCase())
+}
+
+/** Resolve a free-text nationality string to a canonical country name, or null. */
+export function canonicalCountryName(raw: string | null | undefined): string | null {
+  const n = normalizeNationality(raw)
+  return n === 'Unknown' ? null : n
 }
 
 /** ISO2 -> flag emoji via regional-indicator symbols. */
@@ -280,15 +330,14 @@ export function iso2ToFlag(iso2: string): string {
 /** Flag emoji for any nationality string. Falls back to a neutral globe. */
 export function flagFor(nationality: string | null | undefined): string {
   if (!nationality) return '🌐'
-  const key = nationality.trim().toLowerCase()
-  // direct name match
-  if (NAME_TO_ISO.has(key)) return iso2ToFlag(NAME_TO_ISO.get(key)!)
-  // alias match
-  const canon = ALIASES[key]
-  if (canon && NAME_TO_ISO.has(canon.toLowerCase())) {
-    return iso2ToFlag(NAME_TO_ISO.get(canon.toLowerCase())!)
+  // normalize first (handles demonyms + misspellings), then map to ISO2
+  const canon = normalizeNationality(nationality)
+  if (canon !== 'Unknown') {
+    const iso = NAME_TO_ISO.get(canon.toLowerCase())
+    if (iso) return iso2ToFlag(iso)
   }
   // raw 2-letter code (e.g. "AE")
+  const key = nationality.trim().toLowerCase()
   if (key.length === 2) return iso2ToFlag(key)
   return '🌐'
 }

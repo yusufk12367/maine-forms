@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { flagFor } from '../lib/countries'
+import { flagFor, normalizeNationality } from '../lib/countries'
 import {
   LogOut, RefreshCw, User, ChevronRight, Search, Trash2, X, ChevronDown,
   LayoutGrid, List as ListIcon, BarChart3,
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
   const nationalityCounts = (() => {
     const map = new Map<string, number>()
     for (const a of nationalityBase) {
-      const n = (a.nationality || '').trim() || 'Unknown'
+      const n = normalizeNationality(a.nationality)
       map.set(n, (map.get(n) || 0) + 1)
     }
     return Array.from(map.entries())
@@ -192,9 +192,9 @@ export default function AdminDashboard() {
 
   const maxNatCount = nationalityCounts.length ? nationalityCounts[0].count : 1
 
-  // Full nationality option list for the dropdown (sorted, searchable)
+  // Full nationality option list for the dropdown (normalized, sorted, searchable)
   const allNationalities = Array.from(
-    new Set(applications.map(a => (a.nationality || '').trim()).filter(Boolean))
+    new Set(applications.map(a => normalizeNationality(a.nationality)).filter(n => n && n !== 'Unknown'))
   ).sort() as string[]
 
   const nationalityOptions = allNationalities.filter(n =>
@@ -209,7 +209,7 @@ export default function AdminDashboard() {
     const matchStatus = filterStatus === 'all' || a.status === filterStatus
     const matchPosition = filterPosition === 'all' || a.position_applied === filterPosition
     const matchNationality =
-      filterNationality === 'all' || (a.nationality || '').trim() === filterNationality
+      filterNationality === 'all' || normalizeNationality(a.nationality) === filterNationality
     return matchSearch && matchStatus && matchPosition && matchNationality
   })
 
