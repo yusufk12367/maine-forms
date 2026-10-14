@@ -4,18 +4,20 @@ import type { Application } from './types'
 import { CheckCircle, Upload, ChevronRight, ChevronLeft, ArrowRight } from 'lucide-react'
 
 const POSITIONS = [
-  'Butcher',
+  'Senior Sous Chef',
+  'Sous Chef',
+  'Junior Sous Chef',
+  'Head Chef',
+  'CDP',
+  'CDP – Pastry',
+  'CDP – Pan',
+  'Demi Chef',
   'Commis 1',
   'Commis 2',
   'Commis 2 – Sushi / Raw',
-  'Demi Chef',
-  'CDP – Pastry',
-  'CDP – Pan',
-  'CDP',
   'Commis 3',
-  'Junior Sous Chef',
-  'Head Chef',
   'Pastry Chef',
+  'Butcher',
 ]
 
 const ENGLISH_LEVELS = ['Fluent', 'Very Good', 'Good', 'Need Improvement', 'Mediocre']
