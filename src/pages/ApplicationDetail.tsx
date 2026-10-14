@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Application } from '../types'
-import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut, CheckSquare, Square } from 'lucide-react'
+import { ArrowLeft, Download, Eye, FileText, User, X, ZoomIn, ZoomOut, CheckSquare, Square, Maximize2 } from 'lucide-react'
 import jsPDF from 'jspdf'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -483,10 +483,20 @@ export default function ApplicationDetail() {
       <div ref={printRef} className="max-w-4xl mx-auto px-4 py-8 space-y-4">
         <div className="flex items-center gap-6 bg-[#2e2e2e] border border-white/5 rounded-lg p-6">
           {app.profile_photo_url ? (
-            <img src={app.profile_photo_url} alt="" crossOrigin="anonymous"
-              className="w-20 h-20 rounded-full object-cover border border-white/10" />
+            <button
+              type="button"
+              onClick={() => openPreview(app.profile_photo_url!, 'Profile Photo')}
+              className="relative group flex-shrink-0 rounded-full"
+              title="Click to view full size"
+            >
+              <img src={app.profile_photo_url} alt="" crossOrigin="anonymous"
+                className="w-24 h-24 rounded-full object-cover border border-white/10 group-hover:border-maine-gold/50 transition-colors" />
+              <span className="absolute bottom-0 right-0 bg-black/70 backdrop-blur-sm text-white/80 rounded-full p-1.5 border border-white/20 group-hover:bg-maine-gold group-hover:text-black transition-all">
+                <Maximize2 className="w-3.5 h-3.5" />
+              </span>
+            </button>
           ) : (
-            <div className="w-20 h-20 rounded-full bg-[#333333] border border-white/10 flex items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-[#333333] border border-white/10 flex items-center justify-center flex-shrink-0">
               <User className="w-8 h-8 text-white/20" />
             </div>
           )}
