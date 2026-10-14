@@ -531,49 +531,52 @@ export default function AdminDashboard() {
               <div
                 key={app.id}
                 onClick={() => goToProfile(app.id!)}
-                className="relative bg-[#2e2e2e] border border-white/5 rounded-xl p-4 cursor-pointer hover:border-maine-gold/40 hover:-translate-y-1 transition-all duration-200 group"
+                className="relative bg-[#2e2e2e] border border-white/5 rounded-xl overflow-hidden cursor-pointer hover:border-maine-gold/40 hover:-translate-y-1 transition-all duration-200 group"
               >
                 {/* Delete (hover) */}
                 <button
                   onClick={e => confirmDelete(app, e)}
-                  className="absolute top-2 right-2 p-1.5 text-white/0 group-hover:text-white/30 hover:!text-red-400 hover:bg-red-400/10 rounded transition-all"
+                  className="absolute top-2 right-2 z-10 p-1.5 text-white/60 bg-black/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 hover:!text-red-400 hover:bg-red-500/30 rounded-md transition-all"
                   title="Delete application"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
 
-                {/* Photo */}
-                <div className="flex justify-center">
+                {/* Photo — large square headshot */}
+                <div className="relative aspect-square w-full bg-[#333333] overflow-hidden">
                   {app.profile_photo_url ? (
                     <img
                       src={app.profile_photo_url}
-                      alt=""
-                      className="w-20 h-20 rounded-full object-cover border-2 border-white/10 group-hover:border-maine-gold/40 transition-colors"
+                      alt={`${app.first_name} ${app.last_name}`}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                   ) : (
-                    <div className="w-20 h-20 rounded-full bg-[#333333] border-2 border-white/10 flex items-center justify-center">
-                      <User className="w-8 h-8 text-white/30" />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <User className="w-16 h-16 text-white/20" />
                     </div>
                   )}
+
+                  {/* Status badge over the photo */}
+                  <span className={`absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full border capitalize backdrop-blur-sm ${STATUS_COLORS[app.status || 'new']}`}>
+                    {app.status || 'new'}
+                  </span>
+
+                  {/* Name gradient overlay at the bottom of the photo */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pt-8 pb-2">
+                    <p className="text-white font-medium text-sm truncate drop-shadow">
+                      {app.first_name} {app.last_name}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Name + info */}
-                <div className="text-center mt-3 space-y-0.5">
-                  <p className="text-white font-medium text-sm truncate">
-                    {app.first_name} {app.last_name}
-                  </p>
-                  <p className="text-white/40 text-xs truncate">{app.position_applied || '—'}</p>
-                  <p className="text-white/50 text-xs flex items-center justify-center gap-1">
+                {/* Info below photo */}
+                <div className="px-3 py-2.5 space-y-0.5">
+                  <p className="text-white/70 text-xs truncate">{app.position_applied || '—'}</p>
+                  <p className="text-white/50 text-xs flex items-center gap-1">
                     <span>{flagFor(app.nationality)}</span>
                     <span className="truncate">{app.nationality || 'Unknown'}</span>
                   </p>
-                </div>
-
-                {/* Status badge */}
-                <div className="flex justify-center mt-3">
-                  <span className={`text-[10px] px-2.5 py-1 rounded-full border capitalize ${STATUS_COLORS[app.status || 'new']}`}>
-                    {app.status || 'new'}
-                  </span>
                 </div>
               </div>
             ))}
