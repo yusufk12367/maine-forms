@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { supabase } from './lib/supabase'
 import type { Application } from './types'
 import { CheckCircle, Upload, ChevronRight, ChevronLeft, ArrowRight } from 'lucide-react'
 
@@ -154,31 +153,75 @@ export default function App() {
     return { blob: file, ext }
   }
 
-  const uploadFile = async (file: File, pathBase: string): Promise<string> => {
-    const { blob, ext } = await toUploadable(file)
-    const path = `${pathBase}.${ext}`
-    const contentType = ext === 'jpg' ? 'image/jpeg' : (file.type || undefined)
-    const { error } = await supabase.storage.from('applications').upload(path, blob, { upsert: true, contentType })
-    if (error) throw error
-    const { data } = supabase.storage.from('applications').getPublicUrl(path)
-    return data.publicUrl
-  }
-
   const handleSubmit = async () => {
     const e = validate(9)
     if (Object.keys(e).length > 0) { setErrors(e); return }
     setUploading(true)
     setSubmitError('')
     try {
-      const ts = Date.now()
-      const base = `${ts}_${form.first_name}_${form.last_name}`.replace(/\s/g, '_')
-      let profile_photo_url = '', passport_url = '', emirates_id_url = '', cv_url = ''
-      if (files.profile_photo) profile_photo_url = await uploadFile(files.profile_photo, `${base}/profile`)
-      if (files.passport) passport_url = await uploadFile(files.passport, `${base}/passport`)
-      if (files.emirates_id) emirates_id_url = await uploadFile(files.emirates_id, `${base}/eid`)
-      if (files.cv) cv_url = await uploadFile(files.cv, `${base}/cv`)
-      const { error } = await supabase.from('applications').insert([{ ...form, profile_photo_url, passport_url, emirates_id_url, cv_url, status: 'new' }])
-      if (error) throw error
+      // Submit into the People app (single source of truth) via its hiring API.
+      // Field keys are mapped from this form's snake_case to the People config names.
+      const endpoint =
+        (import.meta.env.VITE_PEOPLE_HIRING_ENDPOINT as string | undefined) ||
+        'https://people-lyart.vercel.app/api/hiring'
+
+      const fieldMap: Record<string, string> = {
+        first_name: 'firstName',
+        last_name: 'lastName',
+        phone: 'phone',
+        email: 'email',
+        date_of_birth: 'dateOfBirth',
+        nationality: 'nationality',
+        current_address: 'currentAddress',
+        instagram: 'instagram',
+        position_applied: 'positionApplied',
+        uae_driving_license: 'uaeDrivingLicense',
+        requires_accommodation: 'requiresAccommodation',
+        uae_eligibility: 'uaeEligibility',
+        joining_availability: 'joiningAvailability',
+        english_dialog: 'englishDialog',
+        english_reading: 'englishReading',
+        english_writing: 'englishWriting',
+        other_languages: 'otherLanguages',
+        current_position: 'currentPosition',
+        experience_years: 'experienceYears',
+        current_workplace: 'currentWorkplace',
+        previous_workplaces: 'previousWorkplaces',
+        salary_expectation: 'salaryExpectation',
+        education: 'education',
+        courses_workshops: 'coursesWorkshops',
+        skills_expertise: 'skillsExpertise',
+        employment_references: 'employmentReferences',
+        hobbies: 'hobbies',
+        challenge_story: 'challengeStory',
+        team_inspiration: 'teamInspiration',
+        essential_technique: 'essentialTechnique',
+        previous_roles_style: 'previousRolesStyle',
+        chef_meaning: 'chefMeaning',
+      }
+
+      const fields: Record<string, string> = {}
+      for (const [snake, camel] of Object.entries(fieldMap)) {
+        const v = (form as any)[snake]
+        if (v != null && String(v).trim() !== '') fields[camel] = String(v)
+      }
+
+      const fd = new FormData()
+      fd.append('fields', JSON.stringify(fields))
+      if (files.profile_photo) {
+        const { blob, ext } = await toUploadable(files.profile_photo)
+        fd.append('profilePhoto', blob, `profilePhoto.${ext}`)
+        fd.append('profilePhoto__label', 'Profile Photo')
+      }
+      if (files.cv) {
+        const { blob, ext } = await toUploadable(files.cv)
+        fd.append('cv', blob, `cv.${ext}`)
+        fd.append('cv__label', 'CV / Resume')
+      }
+
+      const res = await fetch(endpoint, { method: 'POST', body: fd })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`)
       setSubmitted(true)
     } catch (err: any) {
       const reason = err?.message || err?.error_description || 'Unknown error'
